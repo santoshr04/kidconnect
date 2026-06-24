@@ -34,12 +34,6 @@ dependencies:
   gap: ^3.0.1
   cached_network_image: ^3.4.1
 
-  # Charts (disabled for now — photo-centric focus)
-  # fl_chart: ^0.70.2
-
-  # Calendar (disabled for now)
-  # table_calendar: ^3.2.0
-
   # Utilities
   intl: ^0.20.2
   uuid: ^4.5.1

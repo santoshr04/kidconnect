@@ -7,7 +7,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../../data/mock/mock_data.dart';
 import '../../../data/models/photo_model.dart';
-import '../../../data/repositories/photo_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 
 /// Intelligent Gallery Screen with AI-filtered feeds.
@@ -141,54 +140,12 @@ class _PhotoGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (isMock) {
-      // Use mock data
-      final photos = childId != null
-          ? MockData.getPhotosForChild(childId!)
-          : MockData.photos;
-      return _PhotoList(photos: photos, isEmpty: photos.isEmpty);
-    }
-
-    // Use Firestore stream
-    final stream = childId != null
-        ? PhotoRepository.getPhotosForChild(childId!)
-        : PhotoRepository.getAllPhotos();
-
-    return StreamBuilder<List<PhotoModel>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || !snapshot.hasData) {
-          return _buildEmptyState();
-        }
-        final photos = snapshot.data!;
-        return _PhotoList(photos: photos, isEmpty: photos.isEmpty);
-      },
-    );
+    final photos = childId != null
+        ? MockData.getPhotosForChild(childId!)
+        : MockData.photos;
+    return _PhotoList(photos: photos, isEmpty: photos.isEmpty);
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text('📸', style: TextStyle(fontSize: 48)),
-          const SizedBox(height: 12),
-          Text(
-            childId != null ? 'No photos of your child yet' : 'Class gallery is empty',
-            style: GoogleFonts.nunito(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text('Teachers haven\'t uploaded any photos yet'),
-        ],
-      ),
-    );
-  }
 }
 
 class _PhotoList extends StatelessWidget {

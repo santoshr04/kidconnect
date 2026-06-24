@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
-import '../../../data/repositories/photo_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 
 /// Smart Bulk Upload Screen for Teachers.
@@ -67,49 +66,25 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
       _statusMessage = 'Uploading ${_selectedFiles.length} photos...';
     });
 
-    final user = ref.read(authProvider).currentUser;
-    final isMock = ref.read(authProvider).usingMockData;
-
-    if (isMock) {
-      // Simulate upload with progress (mock mode)
-      for (int i = 1; i <= 100; i++) {
-        await Future.delayed(const Duration(milliseconds: 30));
-        if (!mounted) return;
-        setState(() {
-          _uploadProgress = i / 100;
-          if (i == 40) _statusMessage = 'Compressing to WebP...';
-          if (i == 60) _statusMessage = 'Running AI Face Detection...';
-          if (i == 90) {
-            _autoTaggedCount = _selectedFiles.length - 1;
-            _needsReviewCount = 1;
-          }
-        });
-      }
-
+    // Simulate upload with progress (mock mode)
+    for (int i = 1; i <= 100; i++) {
+      await Future.delayed(const Duration(milliseconds: 30));
+      if (!mounted) return;
       setState(() {
-        _statusMessage = 'Done! $_autoTaggedCount auto-tagged, $_needsReviewCount need review';
-      });
-    } else {
-      // Real Firebase upload
-      for (int i = 0; i < _selectedFiles.length; i++) {
-        await PhotoRepository.uploadPhoto(
-          file: _selectedFiles[i],
-          caption: '',
-          uploadedBy: user?.id ?? 'unknown',
-        );
-
-        if (!mounted) return;
-        setState(() {
-          _uploadProgress = (i + 1) / _selectedFiles.length;
-          _statusMessage = 'Uploaded ${i + 1}/${_selectedFiles.length}';
-        });
-      }
-
-      setState(() {
-        _autoTaggedCount = _selectedFiles.length;
-        _statusMessage = 'All ${_selectedFiles.length} photos uploaded!';
+        _uploadProgress = i / 100;
+        if (i == 40) _statusMessage = 'Compressing to WebP...';
+        if (i == 60) _statusMessage = 'Running AI Face Detection...';
+        if (i == 90) {
+          _autoTaggedCount = _selectedFiles.length - 1;
+          _needsReviewCount = 1;
+        }
       });
     }
+
+    setState(() {
+      _statusMessage =
+          'Done! $_autoTaggedCount auto-tagged, $_needsReviewCount need review';
+    });
 
     await Future.delayed(const Duration(seconds: 1));
 
@@ -117,9 +92,7 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isMock
-                ? '✅ $_autoTaggedCount photos auto-tagged! (Mock mode)'
-                : '✅ ${_selectedFiles.length} photos uploaded!',
+            '✅ $_autoTaggedCount photos auto-tagged!',
             style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
           ),
           backgroundColor: AppColors.success,

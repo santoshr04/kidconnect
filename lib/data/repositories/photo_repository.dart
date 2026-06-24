@@ -5,14 +5,10 @@ import 'package:uuid/uuid.dart';
 import '../models/photo_model.dart';
 
 /// Firebase photo repository.
-///
-/// Handles uploading photos to Firebase Storage and saving metadata
-/// to Firestore. Falls back to mock data when Firebase is unavailable.
 class PhotoRepository {
   static bool get _isFirebaseAvailable {
     try {
       FirebaseFirestore.instance;
-      FirebaseStorage.instance;
       return true;
     } catch (_) {
       return false;
@@ -22,23 +18,12 @@ class PhotoRepository {
   static const _collection = 'photos';
   static const _uuid = Uuid();
 
-  /// Upload a photo file and save its metadata to Firestore.
-  ///
-  /// [file] — the image file to upload.
-  /// [caption] — optional caption from the teacher.
-  /// [childIds] — manually tagged child IDs.
-  /// [aiDetections] — AI-generated face detections.
-  /// [uploadedBy] — teacher's user ID.
-  /// [activityId] — optional associated activity.
-  ///
-  /// Returns the created [PhotoModel] or null on failure.
   static Future<PhotoModel?> uploadPhoto({
     required File file,
     String? caption,
     List<String> childIds = const [],
     List<FaceDetection> aiDetections = const [],
     required String uploadedBy,
-    String? activityId,
   }) async {
     if (!_isFirebaseAvailable) return null;
 
@@ -50,35 +35,20 @@ class PhotoRepository {
           .child(uploadedBy)
           .child('$photoId.jpg');
 
-      // Upload file
       await storageRef.putFile(file);
-
-      // Get download URL
       final url = await storageRef.getDownloadURL();
 
-      // Save metadata to Firestore
-      final photoData = {
+      await FirebaseFirestore.instance.collection(_collection).doc(photoId).set({
         'id': photoId,
         'url': url,
         'caption': caption ?? '',
         'childIds': childIds,
         'aiDetections': aiDetections
-            .map((d) => {
-                  'childId': d.childId,
-                  'confidence': d.confidence,
-                  'boundingBox': d.boundingBox,
-                })
+            .map((d) => {'childId': d.childId, 'confidence': d.confidence})
             .toList(),
-        'activityId': activityId ?? '',
         'uploadedBy': uploadedBy,
         'uploadDate': FieldValue.serverTimestamp(),
-        'tags': <String>[],
-      };
-
-      await FirebaseFirestore.instance
-          .collection(_collection)
-          .doc(photoId)
-          .set(photoData);
+      });
 
       return PhotoModel(
         id: photoId,
@@ -86,7 +56,6 @@ class PhotoRepository {
         caption: caption,
         childIds: childIds,
         aiDetections: aiDetections,
-        activityId: activityId,
         uploadedBy: uploadedBy,
         uploadDate: DateTime.now(),
       );
@@ -95,7 +64,6 @@ class PhotoRepository {
     }
   }
 
-  /// Get photos for a specific child (AI-tagged or manually tagged).
   static Stream<List<PhotoModel>> getPhotosForChild(String childId) {
     if (!_isFirebaseAvailable) return const Stream.empty();
 
@@ -109,7 +77,6 @@ class PhotoRepository {
             .toList());
   }
 
-  /// Get ALL photos (class feed view — no child filter).
   static Stream<List<PhotoModel>> getAllPhotos() {
     if (!_isFirebaseAvailable) return const Stream.empty();
 
@@ -122,7 +89,6 @@ class PhotoRepository {
             .toList());
   }
 
-  /// Convert Firestore document to PhotoModel.
   static PhotoModel _photoFromFirestore(Map<String, dynamic> data) {
     return PhotoModel(
       id: data['id'] ?? '',
@@ -133,14 +99,11 @@ class PhotoRepository {
               ?.map((d) => FaceDetection(
                     childId: d['childId'] ?? '',
                     confidence: (d['confidence'] ?? 0.0).toDouble(),
-                    boundingBox: List<double>.from(d['boundingBox'] ?? []),
                   ))
               .toList() ??
           [],
-      activityId: data['activityId'],
       uploadedBy: data['uploadedBy'] ?? '',
       uploadDate: (data['uploadDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      tags: List<String>.from(data['tags'] ?? []),
     );
   }
 }

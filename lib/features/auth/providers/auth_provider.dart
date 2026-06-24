@@ -44,7 +44,6 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(const AuthState());
 
-  /// Login with email and password.
   Future<bool> login(String email, String password, UserRole role) async {
     state = state.copyWith(isLoading: true);
 
@@ -56,9 +55,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       String? defaultChildId;
       if (role == UserRole.parent) {
         final children = MockData.getChildrenForParent(firebaseUser.id);
-        if (children.isNotEmpty) {
-          defaultChildId = children.first.id;
-        }
+        if (children.isNotEmpty) defaultChildId = children.first.id;
       }
 
       state = AuthState(
@@ -85,9 +82,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       String? defaultChildId;
       if (role == UserRole.parent) {
         final children = MockData.getChildrenForParent(user.id);
-        if (children.isNotEmpty) {
-          defaultChildId = children.first.id;
-        }
+        if (children.isNotEmpty) defaultChildId = children.first.id;
       }
 
       state = AuthState(
@@ -104,39 +99,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return false;
   }
 
-  /// Quick login as a specific role (demo mode).
   Future<void> loginAsRole(UserRole role) async {
     await login('demo@kidconnect.com', 'password', role);
   }
 
-  /// Select a different child (parent mode).
   void selectChild(String childId) {
     state = state.copyWith(selectedChildId: childId);
   }
 
-  /// Logout.
   Future<void> logout() async {
     await AuthRepository.signOut();
     state = const AuthState();
   }
 }
 
-/// Auth state provider.
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier();
 });
 
-/// Convenience provider for current user.
 final currentUserProvider = Provider<UserModel?>((ref) {
   return ref.watch(authProvider).currentUser;
 });
 
-/// Convenience provider for selected child.
 final selectedChildProvider = Provider<String?>((ref) {
   return ref.watch(authProvider).selectedChildId;
 });
 
-/// Whether the app is running with mock data (no Firebase configured).
 final isMockDataProvider = Provider<bool>((ref) {
   return ref.watch(authProvider).usingMockData;
 });
