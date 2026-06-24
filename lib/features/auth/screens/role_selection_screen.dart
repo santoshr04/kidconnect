@@ -294,7 +294,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             Positioned(
               right: 30,
               top: 100 + sin(val * 2 * pi) * 10,
-              child: Opacity(
+              child: const Opacity(
                 opacity: 0.3,
                 child: Text('⭐', style: TextStyle(fontSize: 18)),
               ),
@@ -302,7 +302,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             Positioned(
               left: 25,
               bottom: 120 + sin(val * 2 * pi + 1) * 8,
-              child: Opacity(
+              child: const Opacity(
                 opacity: 0.25,
                 child: Text('🌈', style: TextStyle(fontSize: 16)),
               ),
@@ -310,7 +310,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             Positioned(
               right: 60,
               bottom: 200 + sin(val * 2 * pi + 2) * 12,
-              child: Opacity(
+              child: const Opacity(
                 opacity: 0.2,
                 child: Text('🎨', style: TextStyle(fontSize: 14)),
               ),

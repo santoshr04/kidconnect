@@ -39,7 +39,7 @@ class MockData {
   ];
 
   static final List<ClassModel> classes = [
-    ClassModel(
+    const ClassModel(
       id: 'class_1',
       name: 'Sunshine Stars ☀️',
       teacherId: 'teacher_1',

@@ -17,8 +17,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _emailController = TextEditingController(text: 'demo@kidconnect.com');
-  final _passwordController = TextEditingController(text: 'password');
+  final _emailController = TextEditingController(text: 'teacher@kidconnect.com');
+  final _passwordController = TextEditingController(text: 'password123');
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   bool _obscurePassword = true;
@@ -60,7 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Login failed. Please try again.'),
+          content: const Text('Login failed. Please try again.'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -222,7 +222,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ),
                     child: authState.isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(

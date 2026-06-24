@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "191005492537",
+    "project_id": "kidconnect-be735",
+    "storage_bucket": "kidconnect-be735.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:191005492537:android:207f2d810b7009e18594e8",
+        "android_client_info": {
+          "package_name": "com.example.kidconnect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCR87BUAKrejb_cjFAMHvO_ta8o7PY2TCw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

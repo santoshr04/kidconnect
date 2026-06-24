@@ -7,6 +7,7 @@ import '../features/auth/screens/role_selection_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/parent/screens/gallery_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
+import '../features/messaging/screens/chat_screen.dart';
 import 'bottom_nav_shell.dart';
 
 /// App router configuration using GoRouter
@@ -124,7 +125,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ─── Standalone Routes ────────────────────────────
-      // (Progress and standalone chat disabled for photo-centric focus)
+      GoRoute(
+        path: '/chat/:userId',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          child: ChatScreen(
+            otherUserId: state.pathParameters['userId']!,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            );
+          },
+        ),
+      ),
     ],
   );
 });
