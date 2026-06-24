@@ -1,127 +1,150 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:async';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/avatar_widget.dart';
+import '../../auth/providers/auth_provider.dart';
 
-/// Upload photos screen for teachers with simulated AI Face Detection
-class UploadPhotosScreen extends StatefulWidget {
+/// Smart Bulk Upload Screen for Teachers
+class UploadPhotosScreen extends ConsumerStatefulWidget {
   const UploadPhotosScreen({super.key});
 
   @override
-  State<UploadPhotosScreen> createState() => _UploadPhotosScreenState();
+  ConsumerState<UploadPhotosScreen> createState() => _UploadPhotosScreenState();
 }
 
-class _UploadPhotosScreenState extends State<UploadPhotosScreen> {
-  bool _isScanning = false;
-  String? _scanResult;
+class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
+  bool _isUploading = false;
+  double _uploadProgress = 0;
+  String _statusMessage = 'Waiting for selection...';
+  final List<String> _selectedFiles = [];
 
-  void _simulateUploadAndScan() async {
-    setState(() {
-      _isScanning = true;
-      _scanResult = null;
-    });
-
-    // Simulate upload delay
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
+  void _simulateUpload() async {
+    if (_selectedFiles.isEmpty) return;
 
     setState(() {
-      _isScanning = false;
-      _scanResult = 'Detected: Emma, Noah ✨';
+      _isUploading = true;
+      _uploadProgress = 0;
+      _statusMessage = 'Uploading ${_selectedFiles.length} photos...';
     });
 
-    // Show success dialog
+    // Simulate high compression & upload
+    for (int i = 1; i <= 100; i++) {
+      await Future.delayed(const Duration(milliseconds: 30));
+      setState(() {
+        _uploadProgress = i / 100;
+        if (i == 40) _statusMessage = 'Compressing to WebP (Max efficiency)...';
+        if (i == 80) _statusMessage = 'Running AI Face Detection...';
+      });
+    }
+
+    setState(() {
+      _statusMessage = 'AI Tagging Complete! Found 3 kids.';
+    });
+
+    await Future.delayed(const Duration(seconds: 1));
+
     if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 28),
-              const SizedBox(width: 10),
-              Text('Upload Successful', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
-            ],
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Successfully shared with parents! 🚀',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '1 Photo uploaded successfully to the gallery.',
-                style: GoogleFonts.nunito(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.center_focus_strong, color: AppColors.primary, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Smart Tag: Emma, Noah detected and tagged automatically.',
-                        style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() => _scanResult = null);
-              },
-              child: Text('Done', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-            ),
-          ],
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+      setState(() {
+        _isUploading = false;
+        _selectedFiles.clear();
+        _statusMessage = 'Ready for next batch';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Upload Photos',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        title: Text('Bulk Upload',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background,
         elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: AvatarWidget(
+              name: authState.currentUser?.name ?? 'Teacher',
+              size: 36,
+            ),
+          ),
+        ],
       ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
+            // ─── AI Engine Info ─────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.secondary.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: AppColors.secondary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Zero-Effort Tagging',
+                          style: GoogleFonts.nunito(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.secondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          'AI will automatically detect and notify parents of their child.',
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-            // Upload area
+            const SizedBox(height: 32),
+
+            // ─── Upload Area ────────────────────────────────
             Expanded(
               child: GestureDetector(
-                onTap: _isScanning ? null : _simulateUploadAndScan,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
+                onTap: _isUploading ? null : () {
+                  setState(() {
+                    _selectedFiles.addAll(List.generate(5, (i) => 'img_$i.jpg'));
+                  });
+                },
+                child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: _isScanning ? AppColors.surfaceVariant : AppColors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: _isScanning
-                          ? AppColors.primary.withValues(alpha: 0.5)
-                          : AppColors.skyBlue.withValues(alpha: 0.3),
+                      color: AppColors.border,
                       width: 2,
                       style: BorderStyle.solid,
                     ),
@@ -129,74 +152,68 @@ class _UploadPhotosScreenState extends State<UploadPhotosScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_isScanning) ...[
-                        const CircularProgressIndicator(color: AppColors.primary),
-                        const SizedBox(height: 24),
+                      if (_selectedFiles.isEmpty) ...[
+                        const Icon(Icons.add_photo_alternate_outlined,
+                            size: 64, color: AppColors.textTertiary),
+                        const SizedBox(height: 16),
                         Text(
-                          'Scanning for faces... ✨',
+                          'Tap to select photos',
                           style: GoogleFonts.nunito(
-                            fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
+                            color: AppColors.textSecondary,
+                            fontSize: 18,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Our smart AI is automatically tagging\nstudents in your photos.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
-                          ),
+                          'Select up to 100 photos at once',
+                          style: GoogleFonts.nunito(color: AppColors.textTertiary),
                         ),
                       ] else ...[
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: AppColors.skyBlue.withValues(alpha: 0.08),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.cloud_upload_outlined,
-                            size: 48,
-                            color: AppColors.skyBlue,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
                         Text(
-                          'Tap to upload photos',
+                          '${_selectedFiles.length} Photos Selected',
                           style: GoogleFonts.nunito(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.textPrimary,
+                            fontSize: 20,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Select photos from your gallery\nor take a new photo',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: AppColors.skyBlue,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            'Choose Photos',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.white,
+                        const SizedBox(height: 24),
+                        if (_isUploading) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 40),
+                            child: LinearProgressIndicator(
+                              value: _uploadProgress,
+                              borderRadius: BorderRadius.circular(10),
+                              minHeight: 8,
+                              backgroundColor: AppColors.surfaceVariant,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  AppColors.secondary),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _statusMessage,
+                            style: GoogleFonts.nunito(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.secondary,
+                            ),
+                          ),
+                        ] else ...[
+                          ElevatedButton.icon(
+                            onPressed: _simulateUpload,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.secondary,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                            ),
+                            icon: const Icon(Icons.cloud_upload_outlined),
+                            label: const Text('Start AI Processing'),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() => _selectedFiles.clear()),
+                            child: const Text('Clear Selection', style: TextStyle(color: AppColors.error)),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -204,37 +221,7 @@ class _UploadPhotosScreenState extends State<UploadPhotosScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
-
-            // Tips
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.skyBlue.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                    color: AppColors.skyBlue.withValues(alpha: 0.15)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.skyBlue, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Photos are automatically scanned to tag students and notify parents instantly.',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        color: AppColors.skyBlue,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
+            const SizedBox(height: 100),
           ],
         ),
       ),
