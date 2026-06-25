@@ -6,8 +6,12 @@ import '../features/auth/screens/splash_screen.dart';
 import '../features/auth/screens/role_selection_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/parent/screens/gallery_screen.dart';
+import '../features/parent/screens/face_enrollment_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
+import '../features/teacher/screens/teacher_gallery_screen.dart';
+import '../features/teacher/screens/photo_detail_screen.dart';
 import '../features/messaging/screens/chat_screen.dart';
+import '../data/models/photo_model.dart';
 import 'bottom_nav_shell.dart';
 
 /// App router configuration using GoRouter
@@ -80,7 +84,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/parent',
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: GalleryScreen(), // Set Gallery as Home
+              child: GalleryScreen(),
             ),
           ),
           GoRoute(
@@ -92,7 +96,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/parent/chat',
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: Scaffold(body: Center(child: Text('Messaging Disabled'))),
+              child: Scaffold(body: Center(child: Text('Messaging Coming Soon'))),
+            ),
+          ),
+          GoRoute(
+            path: '/parent/face-setup',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: FaceEnrollmentScreen(),
             ),
           ),
         ],
@@ -106,7 +116,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/teacher',
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: UploadPhotosScreen(), // Set Upload as Home
+              child: UploadPhotosScreen(),
             ),
           ),
           GoRoute(
@@ -116,15 +126,42 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '/teacher/gallery',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: TeacherGalleryScreen(),
+            ),
+          ),
+          GoRoute(
             path: '/teacher/chat',
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: Scaffold(body: Center(child: Text('Messaging Disabled'))),
+              child: Scaffold(body: Center(child: Text('Messaging Coming Soon'))),
             ),
           ),
         ],
       ),
 
       // ─── Standalone Routes ────────────────────────────
+      GoRoute(
+        path: '/teacher/photo/:photoId',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          child: PhotoDetailScreen(
+            photo: state.extra as PhotoModel,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            );
+          },
+        ),
+      ),
+
       GoRoute(
         path: '/chat/:userId',
         pageBuilder: (context, state) => CustomTransitionPage(

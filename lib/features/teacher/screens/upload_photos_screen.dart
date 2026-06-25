@@ -6,12 +6,12 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../providers/teacher_photo_provider.dart';
 
 /// Smart Bulk Upload Screen for Teachers.
 ///
-/// Teachers select photos → AI (future ML Kit) detects faces →
-/// auto-tags children → uploads to Firebase Storage.
-/// Falls back to simulated upload in mock mode.
+/// Teachers select photos → compress to WebP → upload to Firebase Storage.
+/// Progress bar with real byte progress. Survives tab switches.
 class UploadPhotosScreen extends ConsumerStatefulWidget {
   const UploadPhotosScreen({super.key});
 
@@ -21,22 +21,13 @@ class UploadPhotosScreen extends ConsumerStatefulWidget {
 
 class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
   final ImagePicker _picker = ImagePicker();
-  bool _isUploading = false;
-  double _uploadProgress = 0;
-  String _statusMessage = 'Select photos to upload';
   final List<File> _selectedFiles = [];
-  int _autoTaggedCount = 0;
-  int _needsReviewCount = 0;
 
   Future<void> _pickImages() async {
-    final images = await _picker.pickMultiImage(
-      imageQuality: 85,
-    );
-
+    final images = await _picker.pickMultiImage(imageQuality: 90);
     if (images.isNotEmpty) {
       setState(() {
         _selectedFiles.addAll(images.map((x) => File(x.path)));
-        _statusMessage = '${_selectedFiles.length} photos selected';
       });
     }
   }
@@ -44,81 +35,39 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
   Future<void> _takePhoto() async {
     final photo = await _picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      imageQuality: 90,
     );
-
     if (photo != null) {
-      setState(() {
-        _selectedFiles.add(File(photo.path));
-        _statusMessage = '${_selectedFiles.length} photos selected';
-      });
+      setState(() => _selectedFiles.add(File(photo.path)));
     }
   }
 
-  Future<void> _uploadPhotos() async {
+  void _startUpload() {
     if (_selectedFiles.isEmpty) return;
+    final user = ref.read(authProvider).currentUser;
+    final uploadedBy = user?.id ?? 'teacher_1';
 
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0;
-      _autoTaggedCount = 0;
-      _needsReviewCount = 0;
-      _statusMessage = 'Uploading ${_selectedFiles.length} photos...';
-    });
+    // Copy files before clearing (notifier takes ownership)
+    final files = List<File>.from(_selectedFiles);
+    setState(() => _selectedFiles.clear());
 
-    // Simulate upload with progress (mock mode)
-    for (int i = 1; i <= 100; i++) {
-      await Future.delayed(const Duration(milliseconds: 30));
-      if (!mounted) return;
-      setState(() {
-        _uploadProgress = i / 100;
-        if (i == 40) _statusMessage = 'Compressing to WebP...';
-        if (i == 60) _statusMessage = 'Running AI Face Detection...';
-        if (i == 90) {
-          _autoTaggedCount = _selectedFiles.length - 1;
-          _needsReviewCount = 1;
-        }
-      });
-    }
-
-    setState(() {
-      _statusMessage =
-          'Done! $_autoTaggedCount auto-tagged, $_needsReviewCount need review';
-    });
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '✅ $_autoTaggedCount photos auto-tagged!',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      setState(() {
-        _isUploading = false;
-        _selectedFiles.clear();
-        _uploadProgress = 0;
-        _statusMessage = 'Ready for next batch';
-      });
-    }
+    // Background upload via notifier — survives tab switches
+    ref.read(uploadStateProvider.notifier).uploadPhotos(files, uploadedBy);
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+    final uploadState = ref.watch(uploadStateProvider);
     final isMock = authState.usingMockData;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Bulk Upload',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Bulk Upload',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+        ),
         backgroundColor: AppColors.background,
         elevation: 0,
         actions: [
@@ -126,7 +75,11 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
-                label: Text('MOCK', style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.warning)),
+                label: Text('MOCK',
+                    style: GoogleFonts.nunito(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.warning)),
                 backgroundColor: AppColors.warningLight,
                 padding: EdgeInsets.zero,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -142,45 +95,23 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ─── AI Engine Info ─────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.secondary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.secondary.withValues(alpha: 0.2)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.auto_awesome, color: AppColors.secondary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      isMock
-                          ? '🔧 Mock Mode — Firebase not configured yet. Photos will simulate AI tagging.'
-                          : '📸 Take or select photos. AI will auto-detect and tag kids.',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Upload progress banner (persistent across tabs)
+            if (uploadState.isUploading || uploadState.phase == 'done')
+              _UploadProgressBanner(state: uploadState),
 
-            const SizedBox(height: 24),
+            if (uploadState.isUploading || uploadState.phase == 'done')
+              const SizedBox(height: 20),
 
-            // ─── Camera & Gallery Buttons ───────────────────
+            // Camera & Gallery buttons
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _isUploading ? null : _takePhoto,
+                    onPressed: uploadState.isUploading ? null : _takePhoto,
                     icon: const Icon(Icons.camera_alt_rounded),
                     label: const Text('Camera'),
                     style: ElevatedButton.styleFrom(
@@ -192,7 +123,7 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _isUploading ? null : _pickImages,
+                    onPressed: uploadState.isUploading ? null : _pickImages,
                     icon: const Icon(Icons.photo_library_rounded),
                     label: const Text('Gallery'),
                     style: OutlinedButton.styleFrom(
@@ -206,11 +137,12 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
 
             const SizedBox(height: 24),
 
-            // ─── Selected Photos Count ──────────────────────
+            // Selected photos count
             if (_selectedFiles.isNotEmpty)
               Row(
                 children: [
-                  const Icon(Icons.photo_rounded, color: AppColors.secondary, size: 20),
+                  const Icon(Icons.photo_rounded,
+                      color: AppColors.secondary, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     '${_selectedFiles.length} photos ready',
@@ -221,62 +153,15 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
                     ),
                   ),
                   const Spacer(),
-                  if (!_isUploading)
-                    TextButton.icon(
-                      onPressed: _uploadPhotos,
-                      icon: const Icon(Icons.cloud_upload_outlined, size: 20),
-                      label: const Text('Upload'),
-                    ),
+                  TextButton.icon(
+                    onPressed: _startUpload,
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 20),
+                    label: const Text('Upload'),
+                  ),
                 ],
               ),
 
-            if (_selectedFiles.isNotEmpty) const SizedBox(height: 16),
-
-            // ─── Upload Progress ────────────────────────────
-            if (_isUploading)
-              Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: _uploadProgress,
-                      minHeight: 8,
-                      backgroundColor: AppColors.surfaceVariant,
-                      valueColor:
-                          const AlwaysStoppedAnimation<Color>(AppColors.secondary),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _statusMessage,
-                    style: GoogleFonts.nunito(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.secondary,
-                      fontSize: 14,
-                    ),
-                  ),
-                  if (_needsReviewCount > 0) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.warningLight,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '⚠ $_needsReviewCount photo(s) need manual review',
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-
-            if (!_isUploading && _selectedFiles.isNotEmpty)
+            if (_selectedFiles.isNotEmpty)
               TextButton.icon(
                 onPressed: () => setState(() => _selectedFiles.clear()),
                 icon: const Icon(Icons.clear, size: 18),
@@ -284,8 +169,8 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
                 style: TextButton.styleFrom(foregroundColor: AppColors.error),
               ),
 
-            // ─── Empty State or flexible spacer ─────────────
-            if (_selectedFiles.isEmpty && !_isUploading)
+            // Empty state
+            if (_selectedFiles.isEmpty && !uploadState.isUploading)
               Expanded(
                 child: Center(
                   child: Column(
@@ -298,11 +183,8 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
                           color: AppColors.secondary.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.add_photo_alternate_outlined,
-                          size: 40,
-                          color: AppColors.secondary,
-                        ),
+                        child: const Icon(Icons.add_photo_alternate_outlined,
+                            size: 40, color: AppColors.secondary),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -315,8 +197,9 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'AI will auto-tag kids in each photo',
-                        style: GoogleFonts.nunito(color: AppColors.textTertiary, fontSize: 13),
+                        'Photos are compressed to WebP before upload',
+                        style: GoogleFonts.nunito(
+                            color: AppColors.textTertiary, fontSize: 13),
                       ),
                     ],
                   ),
@@ -329,6 +212,179 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Animated upload progress banner with phase indicators.
+class _UploadProgressBanner extends StatelessWidget {
+  final UploadState state;
+
+  const _UploadProgressBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = state.phase == 'done';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDone ? AppColors.success.withValues(alpha: 0.08) : AppColors.secondary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDone
+              ? AppColors.success.withValues(alpha: 0.2)
+              : AppColors.secondary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Phase steps
+          Row(
+            children: [
+              _PhaseStep(
+                icon: Icons.compress,
+                label: 'Compress',
+                isActive: state.phase == 'compressing',
+                isComplete: state.phase == 'uploading' || isDone,
+              ),
+              Expanded(
+                child: Container(
+                  height: 2,
+                  color: (state.phase == 'uploading' || isDone)
+                      ? AppColors.secondary
+                      : AppColors.textTertiary.withValues(alpha: 0.3),
+                ),
+              ),
+              _PhaseStep(
+                icon: Icons.cloud_upload_outlined,
+                label: 'Upload',
+                isActive: state.phase == 'uploading',
+                isComplete: isDone,
+              ),
+              Expanded(
+                child: Container(
+                  height: 2,
+                  color: isDone
+                      ? AppColors.success
+                      : AppColors.textTertiary.withValues(alpha: 0.3),
+                ),
+              ),
+              _PhaseStep(
+                icon: Icons.check_circle_outline,
+                label: 'Done',
+                isActive: isDone,
+                isComplete: isDone,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Progress bar
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: state.progress,
+                minHeight: 8,
+                backgroundColor: AppColors.surfaceVariant,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  isDone ? AppColors.success : AppColors.secondary,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Status text
+          Row(
+            children: [
+              if (!isDone)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.secondary,
+                  ),
+                )
+              else
+                const Icon(Icons.check_circle,
+                    color: AppColors.success, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                state.statusMessage,
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w600,
+                  color: isDone ? AppColors.success : AppColors.secondary,
+                  fontSize: 13,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${state.completedFiles}/${state.totalFiles}',
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhaseStep extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final bool isComplete;
+
+  const _PhaseStep({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.isComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isComplete
+        ? AppColors.success
+        : isActive
+            ? AppColors.secondary
+            : AppColors.textTertiary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isActive || isComplete
+                ? color.withValues(alpha: 0.15)
+                : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: GoogleFonts.nunito(
+            fontSize: 10,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }

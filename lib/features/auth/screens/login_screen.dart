@@ -260,14 +260,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           color: _themeColor, size: 20),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          'Demo mode: Just tap "Sign In" with the pre-filled credentials to explore!',
-                          style: GoogleFonts.nunito(
-                            fontSize: 13,
-                            color: _themeColor,
-                            fontWeight: FontWeight.w500,
+                          child: Text(
+                            'Welcome back! Use your registered email to sign in.',
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              color: _themeColor,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
                       ),
                     ],
                   ),

@@ -40,6 +40,8 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.8
+  flutter_image_compress: ^2.4.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

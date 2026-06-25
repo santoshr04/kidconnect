@@ -3,7 +3,10 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/theme/app_colors.dart';
 
-/// Bottom navigation shell with role-specific tabs
+/// Bottom navigation shell with role-specific tabs.
+///
+/// Teacher: Upload | My Gallery | Messages
+/// Parent: Gallery | Messages | Face Setup
 class BottomNavShell extends StatelessWidget {
   final bool isParent;
   final Widget child;
@@ -19,9 +22,11 @@ class BottomNavShell extends StatelessWidget {
     if (isParent) {
       if (location.contains('/parent/gallery') || location == '/parent') return 0;
       if (location.contains('/parent/chat')) return 1;
+      if (location.contains('/parent/face-setup')) return 2;
     } else {
       if (location.contains('/teacher/photos') || location == '/teacher') return 0;
-      if (location.contains('/teacher/chat')) return 1;
+      if (location.contains('/teacher/gallery')) return 1;
+      if (location.contains('/teacher/chat')) return 2;
     }
     return 0;
   }
@@ -35,6 +40,9 @@ class BottomNavShell extends StatelessWidget {
         case 1:
           context.go('/parent/chat');
           break;
+        case 2:
+          context.go('/parent/face-setup');
+          break;
       }
     } else {
       switch (index) {
@@ -42,6 +50,9 @@ class BottomNavShell extends StatelessWidget {
           context.go('/teacher/photos');
           break;
         case 1:
+          context.go('/teacher/gallery');
+          break;
+        case 2:
           context.go('/teacher/chat');
           break;
       }
@@ -51,6 +62,7 @@ class BottomNavShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = _getCurrentIndex(context);
+    const tabCount = 3;
 
     return Scaffold(
       body: child,
@@ -71,7 +83,7 @@ class BottomNavShell extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: List.generate(
-                2, // Reduced to 2 tabs
+                tabCount,
                 (index) => _NavItem(
                   icon: _getIcon(index),
                   activeIcon: _getActiveIcon(index),
@@ -95,6 +107,8 @@ class BottomNavShell extends StatelessWidget {
           return Icons.photo_library_outlined;
         case 1:
           return Icons.chat_bubble_outline_rounded;
+        case 2:
+          return Icons.face_outlined;
         default:
           return Icons.home_outlined;
       }
@@ -103,6 +117,8 @@ class BottomNavShell extends StatelessWidget {
         case 0:
           return Icons.add_photo_alternate_outlined;
         case 1:
+          return Icons.photo_library_outlined;
+        case 2:
           return Icons.chat_bubble_outline_rounded;
         default:
           return Icons.dashboard_outlined;
@@ -117,6 +133,8 @@ class BottomNavShell extends StatelessWidget {
           return Icons.photo_library_rounded;
         case 1:
           return Icons.chat_bubble_rounded;
+        case 2:
+          return Icons.face;
         default:
           return Icons.home_rounded;
       }
@@ -125,6 +143,8 @@ class BottomNavShell extends StatelessWidget {
         case 0:
           return Icons.add_photo_alternate_rounded;
         case 1:
+          return Icons.photo_library_rounded;
+        case 2:
           return Icons.chat_bubble_rounded;
         default:
           return Icons.dashboard_rounded;
@@ -136,9 +156,11 @@ class BottomNavShell extends StatelessWidget {
     if (isParent) {
       switch (index) {
         case 0:
-          return 'Gallery';
+          return 'Photos';
         case 1:
           return 'Messages';
+        case 2:
+          return 'Face Setup';
         default:
           return '';
       }
@@ -147,6 +169,8 @@ class BottomNavShell extends StatelessWidget {
         case 0:
           return 'Upload';
         case 1:
+          return 'My Gallery';
+        case 2:
           return 'Messages';
         default:
           return '';
@@ -181,7 +205,7 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected ? color.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -202,7 +226,7 @@ class _NavItem extends StatelessWidget {
             Text(
               label,
               style: GoogleFonts.nunito(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? color : AppColors.textTertiary,
               ),
