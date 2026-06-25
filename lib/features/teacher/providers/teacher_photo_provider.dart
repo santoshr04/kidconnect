@@ -245,13 +245,28 @@ final allTeacherPhotosProvider = Provider<List<PhotoModel>>((ref) {
   final seen = <String>{};
   final merged = <PhotoModel>[];
 
-  for (final photo in [...uploaded, ...mockData]) {
-    if (seen.add(photo.id)) {
-      merged.add(photo);
-    }
+  // Session uploads first (includes pending)
+  for (final photo in uploaded) {
+    if (seen.add(photo.id)) merged.add(photo);
+  }
+
+  // Mock data as fallback (so gallery always has content)
+  for (final photo in mockData) {
+    if (seen.add(photo.id)) merged.add(photo);
   }
 
   return merged;
+});
+
+/// Firestore-sourced photos (real uploaded photos from Firebase).
+/// Survives app restart and login/logout cycles.
+final firestorePhotosProvider = StreamProvider<List<PhotoModel>>((ref) {
+  // Return all photos from Firestore. Falls back to empty if unavailable.
+  try {
+    return PhotoRepository.getAllPhotos();
+  } catch (_) {
+    return const Stream.empty();
+  }
 });
 
 /// Helper to check if a photo is still uploading.

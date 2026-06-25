@@ -74,27 +74,31 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
 
     if (confirm != true) return;
 
+    // Capture IDs before any state change
+    final idsToDelete = Set<String>.from(_selectedIds);
     final isMock = ref.read(authProvider).usingMockData;
-    if (!isMock) {
-      // Delete from Firebase
-      final photos = ref.read(allTeacherPhotosProvider);
-      for (final id in _selectedIds) {
-        final photo = photos.firstWhere((p) => p.id == id);
-        await PhotoRepository.deletePhoto(photo.id, photo.url);
-      }
-    }
 
-    ref.read(teacherPhotoStateProvider.notifier).removePhotos(_selectedIds);
+    // 1. INSTANT: Remove from local state immediately
+    ref.read(teacherPhotoStateProvider.notifier).removePhotos(idsToDelete);
     _exitSelectionMode();
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('🗑️ $count photo${count == 1 ? '' : 's'} deleted'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('🗑️ $count photo${count == 1 ? '' : 's'} deleted'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+
+    // 2. BACKGROUND: Delete from Firebase without blocking UI
+    if (!isMock) {
+      final photos = ref.read(allTeacherPhotosProvider);
+      for (final id in idsToDelete) {
+        final photo = photos.firstWhere((p) => p.id == id, orElse: () => photos.first);
+        // Fire-and-forget — no await
+        PhotoRepository.deletePhoto(photo.id, photo.url);
+      }
     }
   }
 
@@ -107,9 +111,10 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
               ClipRRect(
@@ -170,9 +175,9 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
                   }
                 },
               ),
-              const SizedBox(height: 8),
-            ],
-          ),
+                const SizedBox(height: 8),
+              ],
+            ),
         ),
       ),
     );
@@ -181,8 +186,16 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final allPhotos = ref.watch(allTeacherPhotosProvider);
+    final sessionPhotos = ref.watch(allTeacherPhotosProvider);
+    final firestorePhotos = ref.watch(firestorePhotosProvider).valueOrNull ?? [];
     final uploadState = ref.watch(uploadStateProvider);
+
+    // Merge session + Firestore photos (Firestore data survives re-login)
+    final seen = <String>{};
+    final allPhotos = <PhotoModel>[
+      ...sessionPhotos,
+      ...firestorePhotos.where((p) => seen.add(p.id)),
+    ];
 
     List<PhotoModel> filteredPhotos;
     switch (_filter) {
