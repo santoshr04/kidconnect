@@ -6,63 +6,73 @@ admin.initializeApp();
 const client = new vision.ImageAnnotatorClient();
 
 /**
- * Triggered when a new photo document is created in Firestore.
- * Downloads the image from Storage, runs Cloud Vision face detection,
- * and updates the document with face coordinates.
+ * HTTP-triggered face detection function.
+ * The app calls this after uploading a photo.
+ * No region mismatch issues — works from anywhere.
  */
-exports.detectFacesOnUpload = functions.firestore
-  .document('photos/{photoId}')
-  .onCreate(async (snap, context) => {
-    const photoId = context.params.photoId;
-    const data = snap.data();
-    const imageUrl = data.url;
+exports.detectFaces = functions.https.onRequest(async (req, res) => {
+  // Enable CORS for the Flutter app
+  res.set('Access-Control-Allow-Origin', '*');
+  
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).send('');
+  }
 
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Only POST allowed' });
+  }
+
+  const { photoId } = req.body;
+  if (!photoId) {
+    return res.status(400).json({ error: 'photoId is required' });
+  }
+
+  console.log(`🔍 Processing face detection for: ${photoId}`);
+
+  try {
+    // Read photo data from Firestore
+    const doc = await admin.firestore().collection('photos').doc(photoId).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const imageUrl = doc.data().url;
     if (!imageUrl) {
-      console.log(`Skipping photo ${photoId} - no URL`);
-      return null;
+      return res.status(400).json({ error: 'Photo has no URL' });
     }
 
-    console.log(`🔍 Detecting faces in photo: ${photoId}`);
+    // Run Google Cloud Vision face detection
+    const [result] = await client.faceDetection(imageUrl);
+    const faces = result.faceAnnotations || [];
 
-    try {
-      const [result] = await client.faceDetection(imageUrl);
-      const faces = result.faceAnnotations || [];
+    // Format matching app's FaceDetection model
+    const aiDetections = faces.map((face) => {
+      const vertices = face.boundingPoly.vertices;
+      const left = Math.min(...vertices.map(v => v.x || 0));
+      const top = Math.min(...vertices.map(v => v.y || 0));
+      const right = Math.max(...vertices.map(v => v.x || 0));
+      const bottom = Math.max(...vertices.map(v => v.y || 0));
 
-      // Format matching app's FaceDetection model:
-      // { childId, confidence, boundingBox: [left, top, width, height] }
-      const aiDetections = faces.map((face) => {
-        const vertices = face.boundingPoly.vertices;
-        const left = Math.min(...vertices.map(v => v.x || 0));
-        const top = Math.min(...vertices.map(v => v.y || 0));
-        const right = Math.max(...vertices.map(v => v.x || 0));
-        const bottom = Math.max(...vertices.map(v => v.y || 0));
+      return {
+        childId: '',
+        confidence: face.detectionConfidence || 0.9,
+        boundingBox: [left, top, right - left, bottom - top],
+      };
+    });
 
-        return {
-          childId: '',
-          confidence: face.detectionConfidence || 0.9,
-          boundingBox: [
-            left,
-            top,
-            right - left,
-            bottom - top,
-          ],
-        };
-      });
+    // Update Firestore
+    await doc.ref.update({
+      aiDetections: aiDetections,
+      faceDetectionComplete: true,
+      detectedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-      await snap.ref.update({
-        aiDetections: aiDetections,
-        faceDetectionComplete: true,
-        detectedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      console.log(`✅ Saved ${aiDetections.length} faces for photo ${photoId}`);
-      return { success: true, faceCount: faces.length };
-    } catch (error) {
-      console.error(`❌ Failed for ${photoId}:`, error);
-      await snap.ref.update({
-        faceDetectionComplete: false,
-        faceDetectionError: error.message,
-      });
-      return { success: false, error: error.message };
-    }
-  });
+    console.log(`✅ Saved ${faces.length} faces for ${photoId}`);
+    return res.json({ success: true, faceCount: faces.length, detections: aiDetections });
+  } catch (error) {
+    console.error(`❌ Failed for ${photoId}:`, error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
