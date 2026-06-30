@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/mock/mock_data.dart';
 import '../../../data/repositories/photo_repository.dart';
+import '../../../core/services/background_processor.dart';
 
 /// Upload state shared across screens.
 class UploadState {

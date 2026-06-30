@@ -104,7 +104,7 @@ def recognize_batch():
                     best_score = score
                     best_match = {'child_id': child_id, 'name': info['name'], 'score': float(score)}
 
-        if best_match and best_score > 0.35:
+        if best_match and best_score > 0.55:
             results.append({
                 'matched': True,
                 'child_id': best_match['child_id'],
@@ -137,7 +137,7 @@ def recognize():
             if score > best_score:
                 best_score = score
                 best_match = {'child_id': child_id, 'name': info['name'], 'score': float(score)}
-    if best_match and best_score > 0.35:
+    if best_match and best_score > 0.55:
         return jsonify({
             'matched': True, 'child_id': best_match['child_id'],
             'name': best_match['name'],
