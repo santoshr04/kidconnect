@@ -6,7 +6,7 @@ admin.initializeApp();
 const visionClient = new vision.ImageAnnotatorClient();
 
 // Cloud Run InsightFace URL — set during deployment
-const INSIGHTFACE_URL = 'http://10.10.11.68:5000'; // Replace with Cloud Run URL
+const INSIGHTFACE_URL = 'https://kidconnect-insightface-191005492537.us-central1.run.app';
 
 /**
  * Firestore-triggered cloud function.

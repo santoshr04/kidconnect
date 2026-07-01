@@ -145,8 +145,15 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   void _showTagPopup(_FaceCircle circle) {
     final nameController = TextEditingController();
     showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (ctx, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          child: Padding(padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
           Row(children: [Container(width: 48, height: 48, decoration: BoxDecoration(color: circle.color.withValues(alpha: 0.15), shape: BoxShape.circle, border: Border.all(color: circle.color, width: 2.5)), child: Center(child: Icon(Icons.person, color: circle.color, size: 24))), const SizedBox(width: 12),
@@ -156,7 +163,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
           const Divider(height: 24),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(controller: nameController, decoration: InputDecoration(hintText: 'Or type a NEW name...', prefixIcon: const Icon(Icons.person_add_alt_rounded, color: AppColors.accent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none), filled: true, fillColor: AppColors.surfaceVariant), onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
           const SizedBox(height: 8), TextButton(onPressed: () { final name = nameController.text.trim(); if (name.isNotEmpty) { _addNewName(circle, name); Navigator.pop(ctx); } }, child: const Text('Add & Tag')),
-          const SizedBox(height: 16)])));
+          const SizedBox(height: 16)]))))),
   }
 
   void _addNewName(_FaceCircle circle, String name) {

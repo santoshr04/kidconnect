@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class InsightFaceService {
-  static const _baseUrl = 'http://10.10.11.68:5000';
+  static const _baseUrl = 'https://kidconnect-insightface-191005492537.us-central1.run.app';
 
   static Future<bool> isHealthy() async {
     try {

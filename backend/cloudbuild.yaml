@@ -3,15 +3,5 @@ steps:
     args: ['build', '-t', 'gcr.io/kidconnect-be735/kidconnect-insightface', '.']
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/kidconnect-be735/kidconnect-insightface']
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    args:
-      - 'run'
-      - 'deploy'
-      - 'kidconnect-insightface'
-      - '--image=gcr.io/kidconnect-be735/kidconnect-insightface'
-      - '--platform=managed'
-      - '--region=us-central1'
-      - '--memory=2Gi'
-      - '--allow-unauthenticated'
 images:
   - 'gcr.io/kidconnect-be735/kidconnect-insightface'
