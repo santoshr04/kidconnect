@@ -4,13 +4,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../models/photo_model.dart';
 
-/// Firebase photo repository.
 class PhotoRepository {
   static bool get _isFirebaseAvailable {
-    try {
-      FirebaseFirestore.instance;
-      return true;
-    } catch (_) { return false; }
+    try { FirebaseFirestore.instance; return true; } catch (_) { return false; }
   }
 
   static const _collection = 'photos';
@@ -73,10 +69,13 @@ class PhotoRepository {
 
   static Stream<List<PhotoModel>> getPhotosForChild(String childId) {
     if (!_isFirebaseAvailable) return const Stream.empty();
+    // Fetch all photos ordered by date, filter client-side (no composite index needed)
     return FirebaseFirestore.instance.collection(_collection)
-        .where('childIds', arrayContains: childId)
         .orderBy('uploadDate', descending: true)
-        .snapshots().map((s) => s.docs.map((d) => _fromFirestore(d.data())).toList());
+        .snapshots().map((s) => s.docs
+            .map((d) => _fromFirestore(d.data()))
+            .where((p) => p.childIds.contains(childId))
+            .toList());
   }
 
   static Stream<List<PhotoModel>> getAllPhotos() {
@@ -98,8 +97,7 @@ class PhotoRepository {
                 confidence: (d['confidence'] ?? 0.0).toDouble(),
                 boundingBox: (d['boundingBox'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [],
               ))
-          .toList() ??
-          [],
+          .toList() ?? [],
       uploadedBy: data['uploadedBy'] ?? '',
       uploadDate: (data['uploadDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );

@@ -36,6 +36,14 @@ class MockData {
       phone: '+1 555-0201',
       createdAt: DateTime(2025, 8, 10),
     ),
+    UserModel(
+      id: 'parent_ruthvi',
+      name: 'Ruthvi\'s Parent',
+      email: 'parent@kidconnect.com',
+      role: UserRole.parent,
+      phone: '+1 555-0202',
+      createdAt: DateTime(2025, 8, 15),
+    ),
   ];
 
   static final List<ClassModel> classes = [
@@ -44,7 +52,7 @@ class MockData {
       name: 'Sunshine Stars ☀️',
       teacherId: 'teacher_1',
       teacherName: 'Sarah Johnson',
-      studentIds: ['child_1', 'child_2', 'child_3'],
+      studentIds: ['child_1', 'child_2', 'child_3', 'child_ruthvi'],
       description: 'Ages 3-4, Morning session',
       schedule: 'Mon-Fri, 8:00 AM - 12:00 PM',
       capacity: 15,
@@ -83,6 +91,18 @@ class MockData {
       parentId: 'parent_3',
       dateOfBirth: DateTime(2022, 7, 22),
       enrollmentDate: DateTime(2025, 7, 22),
+    ),
+    ChildModel(
+      id: 'child_ruthvi',
+      name: 'Ruthvi',
+      age: 4,
+      classId: 'class_1',
+      className: 'Sunshine Stars ☀️',
+      parentId: 'parent_ruthvi',
+      dateOfBirth: DateTime(2022, 8, 10),
+      enrollmentDate: DateTime(2025, 8, 15),
+      hasFaceProfile: true,
+      enrolledFaceCount: 4,
     ),
   ];
 
@@ -191,6 +211,76 @@ class MockData {
       uploadedBy: 'teacher_1',
       uploadDate: DateTime.now().subtract(const Duration(days: 6)),
       tags: ['yoga', 'exercise', 'balance'],
+    ),
+    // Ruthvi-specific photos
+    PhotoModel(
+      id: 'photo_ruthvi_1',
+      url: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9',
+      ),
+      caption: 'Ruthvi building a tall tower! 🏗️',
+      childIds: ['child_ruthvi'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ruthvi', confidence: 0.97),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(hours: 1)),
+      tags: ['blocks', 'building', 'play'],
+    ),
+    PhotoModel(
+      id: 'photo_ruthvi_2',
+      url: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30',
+      ),
+      caption: 'Ruthvi painting with watercolors 🎨',
+      childIds: ['child_ruthvi'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ruthvi', confidence: 0.95),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(hours: 3)),
+      tags: ['art', 'painting', 'creative'],
+    ),
+    PhotoModel(
+      id: 'photo_ruthvi_3',
+      url: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74',
+      ),
+      caption: 'Reading time — Ruthvi loves books! 📚',
+      childIds: ['child_ruthvi'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ruthvi', confidence: 0.93),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 1)),
+      tags: ['reading', 'books', 'learning'],
+    ),
+    PhotoModel(
+      id: 'photo_group_ruthvi',
+      url: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c',
+      ),
+      caption: 'Group snack time — Ruthvi sharing with friends 🍎',
+      childIds: ['child_ruthvi', 'child_2'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ruthvi', confidence: 0.91),
+        const FaceDetection(childId: 'child_2', confidence: 0.90),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 2)),
+      tags: ['snack', 'sharing', 'friends'],
     ),
   ];
 

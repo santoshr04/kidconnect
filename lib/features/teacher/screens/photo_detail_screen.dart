@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:go_router/go_router.dart';
@@ -214,6 +215,13 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   Future<void> _tagFace(_FaceCircle circle, String childId, String childName) async {
     setState(() { if (!_taggedChildIds.contains(childId)) _taggedChildIds.add(childId); circle.matchedChildId = childId; circle.childName = childName; circle.confidence = null; });
     ref.read(teacherPhotoStateProvider.notifier).updateTags(widget.photo.id, _taggedChildIds);
+
+    // Save childIds to Firestore so parent gallery sees tagged photos
+    try {
+      await FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
+        'childIds': _taggedChildIds,
+      });
+    } catch (_) {}
 
     // ENROLL this face in InsightFace so it gets recognized next time
     if (_cachedImageBytes != null) {

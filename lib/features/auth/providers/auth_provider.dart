@@ -73,9 +73,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     UserModel? user;
     if (role == UserRole.parent) {
-      user = MockData.parents.isNotEmpty ? MockData.parents.first : null;
+      // Match by email if possible, otherwise use first parent
+      user = MockData.parents.cast<UserModel?>().firstWhere(
+        (p) => p!.email.toLowerCase() == email.toLowerCase(),
+        orElse: () => MockData.parents.isNotEmpty ? MockData.parents.first : null,
+      );
     } else {
-      user = MockData.teachers.isNotEmpty ? MockData.teachers.first : null;
+      user = MockData.teachers.cast<UserModel?>().firstWhere(
+        (t) => t!.email.toLowerCase() == email.toLowerCase(),
+        orElse: () => MockData.teachers.isNotEmpty ? MockData.teachers.first : null,
+      );
     }
 
     if (user != null) {
