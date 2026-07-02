@@ -141,6 +141,8 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             }
           }
         }
+        // Push auto-recognized childIds to Firestore for parent gallery
+        _syncTaggedToFirestore();
       });
     } catch (_) {}
   }
@@ -234,6 +236,14 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     }
 
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $childName tagged & enrolled!'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
+  }
+
+  void _syncTaggedToFirestore() {
+    try {
+      FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
+        'childIds': _taggedChildIds,
+      });
+    } catch (_) {}
   }
 
   @override Widget build(BuildContext context) {
