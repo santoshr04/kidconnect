@@ -110,6 +110,52 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await login('demo@kidconnect.com', 'password', role);
   }
 
+  Future<bool> loginParentByPhone(String phone) async {
+    state = state.copyWith(isLoading: true);
+
+    // First try to match the phone, get the parent email, then Firebase Auth
+    final parent = MockData.getParentByPhone(phone);
+
+    if (parent == null) {
+      state = state.copyWith(isLoading: false);
+      return false;
+    }
+
+    // Try Firebase Auth with parent credentials
+    final firebaseUser = await AuthRepository.signInWithEmail(
+      parent.email,
+      'password123',
+      UserRole.parent,
+    );
+
+    // Look up children using mock parent ID (Firebase UID won't match mock IDs)
+    final children = MockData.getChildrenForParent(parent.id);
+    final defaultChildId = children.isNotEmpty ? children.first.id : null;
+
+    if (firebaseUser != null) {
+      state = AuthState(
+        currentUser: firebaseUser,
+        isAuthenticated: true,
+        isLoading: false,
+        selectedChildId: defaultChildId,
+        usingMockData: false,
+      );
+      return true;
+    }
+
+    // Firebase Auth failed, fall back to mock (Firestore won't work)
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    state = AuthState(
+      currentUser: parent,
+      isAuthenticated: true,
+      isLoading: false,
+      selectedChildId: defaultChildId,
+      usingMockData: true,
+    );
+    return true;
+  }
+
   void selectChild(String childId) {
     state = state.copyWith(selectedChildId: childId);
   }

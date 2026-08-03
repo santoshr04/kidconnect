@@ -162,7 +162,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                             ),
                             delay: 200,
                             floatController: _floatController,
-                            onTap: () => context.push('/login', extra: 'parent'),
+                            onTap: () => context.push('/parent-login'),
                           ),
 
                           const SizedBox(height: 16),

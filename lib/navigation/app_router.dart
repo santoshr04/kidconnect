@@ -5,7 +5,9 @@ import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/screens/splash_screen.dart';
 import '../features/auth/screens/role_selection_screen.dart';
 import '../features/auth/screens/login_screen.dart';
+import '../features/auth/screens/parent_phone_login_screen.dart';
 import '../features/parent/screens/gallery_screen.dart';
+import '../features/parent/screens/parent_photo_viewer_screen.dart';
 import '../features/parent/screens/face_enrollment_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
 import '../features/teacher/screens/teacher_gallery_screen.dart';
@@ -26,11 +28,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation == '/role-select' ||
           state.matchedLocation == '/';
 
-      if (!isAuthenticated && !isLoginRoute) {
+      final isParentLoginRoute = state.matchedLocation == '/parent-login';
+
+      if (!isAuthenticated && !isLoginRoute && !isParentLoginRoute) {
         return '/role-select';
       }
 
-      if (isAuthenticated && isLoginRoute) {
+      if (isAuthenticated && (isLoginRoute || isParentLoginRoute)) {
         return authState.isParent ? '/parent' : '/teacher';
       }
 
@@ -76,6 +80,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
+      // ─── Parent Phone Login ──────────────────────────
+      GoRoute(
+        path: '/parent-login',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          child: const ParentPhoneLoginScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            );
+          },
+        ),
+      ),
+
       // ─── Parent Shell ─────────────────────────────────
       ShellRoute(
         builder: (context, state, child) =>
@@ -98,6 +122,22 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => const NoTransitionPage(
               child: Scaffold(body: Center(child: Text('Messaging Coming Soon'))),
             ),
+          ),
+          GoRoute(
+            path: '/parent/photo-viewer',
+            pageBuilder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>;
+              return CustomTransitionPage(
+                child: ParentPhotoViewerScreen(
+                  photos: (extra['photos'] as List).cast<PhotoModel>(),
+                  initialIndex: extra['index'] as int,
+                ),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              );
+            },
           ),
           GoRoute(
             path: '/parent/face-setup',

@@ -38,10 +38,10 @@ class MockData {
     ),
     UserModel(
       id: 'parent_ruthvi',
-      name: 'Ruthvi\'s Parent',
+      name: 'Ruthvi Aisiri S',
       email: 'parent@kidconnect.com',
       role: UserRole.parent,
-      phone: '+1 555-0202',
+      phone: '9611777914',
       createdAt: DateTime(2025, 8, 15),
     ),
   ];
@@ -94,7 +94,7 @@ class MockData {
     ),
     ChildModel(
       id: 'child_ruthvi',
-      name: 'Ruthvi',
+      name: 'Ruthvi Aisiri S',
       age: 4,
       classId: 'class_1',
       className: 'Sunshine Stars ☀️',
@@ -331,6 +331,14 @@ class MockData {
 
   static List<ChildModel> getChildrenForParent(String parentId) {
     return children.where((c) => c.parentId == parentId).toList();
+  }
+
+  static UserModel? getParentByPhone(String phone) {
+    try {
+      return parents.firstWhere((p) => p.phone == phone);
+    } catch (_) {
+      return null;
+    }
   }
 
   static List<PhotoModel> getPhotosForChild(String childId) {
