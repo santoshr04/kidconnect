@@ -230,6 +230,103 @@ def detect_and_recognize():
         'image_height': img_height,
     })
 
+@app.route('/validate_face', methods=['POST'])
+def validate_face():
+    """
+    Validates a face photo for parent enrollment:
+    - Checks exactly 1 face is present
+    - Returns face_count, quality assessment, and embedding for cross-photo comparison
+    """
+    if 'face' not in request.files:
+        return jsonify({'valid': False, 'error': 'No image uploaded'}), 400
+
+    img_bytes = request.files['face'].read()
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    import cv2
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({'valid': False, 'error': 'Invalid image format'}), 400
+
+    faces = get_face_app().get(img)
+    face_count = len(faces)
+
+    if face_count == 0:
+        return jsonify({'valid': False, 'error': 'No face detected. Please upload a clear photo of the child\'s face.'})
+
+    if face_count > 1:
+        return jsonify({'valid': False, 'error': f'Multiple faces detected ({face_count}). Please upload a photo with only the child\'s face.', 'face_count': face_count})
+
+    # Exactly 1 face — good
+    embedding = faces[0].embedding
+    bbox = faces[0].bbox.astype(float)
+    face_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+    img_area = img.shape[0] * img.shape[1]
+    face_ratio = face_area / img_area
+
+    # Quality check: face should be reasonably large in the frame
+    if face_ratio < 0.05:
+        return jsonify({
+            'valid': False,
+            'error': 'Face is too small in the photo. Please take a closer photo of the child.',
+            'face_count': 1
+        })
+
+    return jsonify({
+        'valid': True,
+        'face_count': 1,
+        'face_ratio': round(face_ratio, 4),
+        'embedding': embedding.tolist() if embedding is not None else None,
+    })
+
+@app.route('/check_enrolled', methods=['GET'])
+def check_enrolled():
+    """Check if a child is enrolled. Returns child_id -> name + embedding count."""
+    return jsonify([
+        {'child_id': kid, 'name': info['name'], 'embeddings_count': len(info['embeddings'])}
+        for kid, info in _enrolled.items()
+    ])
+
+@app.route('/verify_same_child', methods=['POST'])
+def verify_same_child():
+    """
+    Checks if two face embeddings are from the same child.
+    Used to validate that all uploaded photos are of the same person.
+    """
+    data = request.get_json(silent=True) or {}
+    emb1 = data.get('embedding1')
+    emb2 = data.get('embedding2')
+    if not emb1 or not emb2:
+        return jsonify({'same_child': False, 'error': 'Missing embeddings'}), 400
+
+    score = cosine_similarity(np.array(emb1), np.array(emb2))
+    return jsonify({
+        'same_child': score > 0.40,
+        'similarity': round(float(score) * 100, 1)
+    })
+
+@app.route('/delete_enrollment/<child_id>', methods=['DELETE'])
+def delete_enrollment(child_id):
+    """Delete a child's enrollment data."""
+    global _enrolled
+    if child_id in _enrolled:
+        del _enrolled[child_id]
+        save_enrolled()
+        return jsonify({'success': True, 'message': f'Deleted enrollment for {child_id}'})
+    return jsonify({'success': False, 'message': 'Child not found'}), 404
+
+@app.route('/enrollment/<child_id>', methods=['GET'])
+def get_enrollment_info(child_id):
+    """Get enrollment info for a specific child."""
+    if child_id in _enrolled:
+        info = _enrolled[child_id]
+        return jsonify({
+            'enrolled': True,
+            'child_id': child_id,
+            'name': info['name'],
+            'embeddings_count': len(info['embeddings'])
+        })
+    return jsonify({'enrolled': False, 'child_id': child_id})
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'enrolled_count': len(_enrolled)})

@@ -98,6 +98,98 @@ class InsightFaceService {
     }
   }
 
+  /// Validate a face photo: checks 1 face, quality, returns embedding.
+  static Future<Map<String, dynamic>> validateFace(Uint8List faceBytes) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/validate_face'));
+      request.files.add(http.MultipartFile.fromBytes('face', faceBytes, filename: 'validate.jpg'));
+      final response = await request.send().timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        return {'valid': false, 'error': 'Server returned status ${response.statusCode}'};
+      }
+      final body = await response.stream.bytesToString();
+      // Guard against non-JSON responses (HTML error pages, etc.)
+      if (body.trim().startsWith('<')) {
+        return {'valid': false, 'error': 'Server unavailable — restart the backend'};
+      }
+      try {
+        return jsonDecode(body) as Map<String, dynamic>;
+      } catch (_) {
+        return {'valid': false, 'error': 'Invalid server response'};
+      }
+    } catch (e) {
+      return {'valid': false, 'error': 'Cannot reach server. Check if backend is running at $_baseUrl'};
+    }
+  }
+
+  /// Check if a specific child is enrolled on the server.
+  static Future<bool> isChildEnrolled(String childId) async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/enrolled'))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return false;
+      final body = response.body;
+      if (body.trim().startsWith('<')) return false;
+      try {
+        final enrolled = (jsonDecode(body) as List).cast<Map<String, dynamic>>();
+        return enrolled.any((e) => e['child_id'] == childId);
+      } catch (_) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Verify two face embeddings belong to the same child.
+  static Future<bool> verifySameChild(List<double> emb1, List<double> emb2) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/verify_same_child'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'embedding1': emb1, 'embedding2': emb2}),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return false;
+      final body = response.body;
+      if (body.trim().startsWith('<')) return false;
+      try {
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        return data['same_child'] == true;
+      } catch (_) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Get enrollment info for a specific child.
+  static Future<Map<String, dynamic>> getEnrollmentInfo(String childId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/enrollment/$childId'),
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return {'enrolled': false, 'child_id': childId};
+      final body = response.body;
+      if (body.trim().startsWith('<')) return {'enrolled': false, 'child_id': childId};
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (_) {
+      return {'enrolled': false, 'child_id': childId};
+    }
+  }
+
+  /// Delete a child's enrollment data.
+  static Future<bool> deleteEnrollment(String childId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/delete_enrollment/$childId'),
+      ).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Recognize multiple face crops in ONE batch request.
   /// [faceBytesList] — list of cropped face images (one per detected face)
   /// Returns list of results in same order.

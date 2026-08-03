@@ -44,6 +44,22 @@ class MockData {
       phone: '9611777914',
       createdAt: DateTime(2025, 8, 15),
     ),
+    UserModel(
+      id: 'parent_priya',
+      name: 'Priya Sharma',
+      email: 'priya.sharma@email.com',
+      role: UserRole.parent,
+      phone: '9876543210',
+      createdAt: DateTime(2025, 9, 1),
+    ),
+    UserModel(
+      id: 'parent_rajesh',
+      name: 'Rajesh Kumar',
+      email: 'rajesh.kumar@email.com',
+      role: UserRole.parent,
+      phone: '9988776655',
+      createdAt: DateTime(2025, 7, 20),
+    ),
   ];
 
   static final List<ClassModel> classes = [
@@ -52,7 +68,7 @@ class MockData {
       name: 'Sunshine Stars ☀️',
       teacherId: 'teacher_1',
       teacherName: 'Sarah Johnson',
-      studentIds: ['child_1', 'child_2', 'child_3', 'child_ruthvi'],
+      studentIds: ['child_1', 'child_2', 'child_3', 'child_ruthvi', 'child_aarav', 'child_ananya'],
       description: 'Ages 3-4, Morning session',
       schedule: 'Mon-Fri, 8:00 AM - 12:00 PM',
       capacity: 15,
@@ -103,6 +119,28 @@ class MockData {
       enrollmentDate: DateTime(2025, 8, 15),
       hasFaceProfile: true,
       enrolledFaceCount: 4,
+    ),
+    ChildModel(
+      id: 'child_aarav',
+      name: 'Aarav Sharma',
+      age: 3,
+      classId: 'class_1',
+      className: 'Sunshine Stars ☀️',
+      parentId: 'parent_priya',
+      dateOfBirth: DateTime(2023, 2, 14),
+      enrollmentDate: DateTime(2025, 9, 1),
+    ),
+    ChildModel(
+      id: 'child_ananya',
+      name: 'Ananya Kumar',
+      age: 4,
+      classId: 'class_1',
+      className: 'Sunshine Stars ☀️',
+      parentId: 'parent_rajesh',
+      dateOfBirth: DateTime(2022, 11, 5),
+      enrollmentDate: DateTime(2025, 7, 20),
+      hasFaceProfile: true,
+      enrolledFaceCount: 2,
     ),
   ];
 
