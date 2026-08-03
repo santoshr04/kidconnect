@@ -12,7 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/mock/mock_data.dart';
-import '../../../core/services/cloud_vision_service.dart';
 import '../../../core/services/insight_face_service.dart';
 import '../providers/teacher_photo_provider.dart';
 
@@ -40,7 +39,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   String? _faceError;
   double _imgWidth = 1, _imgHeight = 1;
   List<ChildOption> _allChildren = [];
-  Uint8List? _cachedImageBytes; // Download once, reuse
+  Uint8List? _cachedImageBytes;
 
   @override void initState() { super.initState(); _taggedChildIds = List<String>.from(widget.photo.childIds); _loadChildren(); _loadFaces(); }
 
@@ -68,7 +67,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     if (!widget.photo.url.startsWith('https://')) return;
     setState(() => _isDetecting = true);
 
-    // Download image ONCE (for dimensions + crop)
+    // Download image once for dimension info + future enrollment crops
     try {
       final response = await http.get(Uri.parse(widget.photo.url));
       _cachedImageBytes = response.bodyBytes;
@@ -79,94 +78,71 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       }
     } catch (_) { _imgWidth = 4000; _imgHeight = 3000; }
 
-    // Get face bounding boxes from Cloud Vision
-    final faces = await CloudVisionService.detectFaces(widget.photo.url);
+    // SINGLE unified call to InsightFace server — detection + recognition
+    final result = await InsightFaceService.detectAndRecognize(widget.photo.url);
     if (!mounted) return;
-    if (faces.isEmpty) { setState(() { _isDetecting = false; _faceError = 'No faces detected'; }); return; }
 
-    // Build circles — mark faces that were already tagged in Firestore
+    if (result.error != null) {
+      setState(() { _isDetecting = false; _faceError = result.error; });
+      return;
+    }
+
+    if (result.faces.isEmpty) {
+      setState(() { _isDetecting = false; _faceError = 'No faces detected'; });
+      return;
+    }
+
+    // Use server-reported image dimensions if available
+    _imgWidth = result.imageWidth;
+    _imgHeight = result.imageHeight;
+
+    // Build face circles from unified response
     final circs = <_FaceCircle>[];
-    for (var i = 0; i < faces.length; i++) {
-      final f = faces[i];
-      circs.add(_FaceCircle(
-        id: 'face_$i', index: i + 1,
+    for (var i = 0; i < result.faces.length; i++) {
+      final f = result.faces[i];
+      final faceLeft = f.left.toInt();
+      final faceTop = f.top.toInt();
+      final faceW = f.width.toInt();
+      final faceH = f.height.toInt();
+
+      final circle = _FaceCircle(
+        id: 'face_$i',
+        index: i + 1,
         color: _faceColors[i % _faceColors.length],
         rect: Rect.fromLTWH(f.left / _imgWidth, f.top / _imgHeight, f.width / _imgWidth, f.height / _imgHeight),
-        faceLeft: f.left.toInt(), faceTop: f.top.toInt(),
-        faceWidth: f.width.toInt(), faceHeight: f.height.toInt(),
-      ));
-    }
-    setState(() { _faceCircles = circs; _isDetecting = false; });
+        faceLeft: faceLeft, faceTop: faceTop, faceWidth: faceW, faceHeight: faceH,
+      );
 
-    // Step 2 (background): Run batch recognition for unknown faces
-    _runBatchRecognition();
-  }
-
-  Future<void> _runBatchRecognition() async {
-    if (_cachedImageBytes == null) return;
-
-    // Only recognize faces that aren't already tagged
-    final untagged = <int>[];
-    final crops = <Uint8List>[];
-    for (var i = 0; i < _faceCircles.length; i++) {
-      if (_faceCircles[i].matchedChildId == null) {
-        final crop = await _cropFaceBytes(
-          _faceCircles[i].faceLeft, _faceCircles[i].faceTop,
-          _faceCircles[i].faceWidth, _faceCircles[i].faceHeight,
-        );
-        if (crop != null) {
-          untagged.add(i);
-          crops.add(crop);
+      // Auto-tag if server recognized this face
+      if (f.matched && f.childId != null) {
+        circle.matchedChildId = f.childId;
+        circle.childName = f.name;
+        circle.confidence = f.confidence;
+        if (!_taggedChildIds.contains(f.childId)) {
+          _taggedChildIds.add(f.childId!);
         }
       }
+      circs.add(circle);
     }
 
-    if (crops.isEmpty || !mounted) return;
+    setState(() { _faceCircles = circs; _isDetecting = false; });
 
-    try {
-      final results = await InsightFaceService.recognizeBatch(crops);
-      if (!mounted) return;
-
-      setState(() {
-        for (var j = 0; j < results.length && j < untagged.length; j++) {
-          final r = results[j];
-          if (r['matched'] == true) {
-            final idx = untagged[j];
-            _faceCircles[idx].matchedChildId = r['child_id'] as String?;
-            _faceCircles[idx].childName = r['name'] as String?;
-            _faceCircles[idx].confidence = (r['confidence'] as num?)?.toDouble();
-            if (_faceCircles[idx].matchedChildId != null &&
-                !_taggedChildIds.contains(_faceCircles[idx].matchedChildId)) {
-              _taggedChildIds.add(_faceCircles[idx].matchedChildId!);
-            }
-          }
-        }
-        // Push auto-recognized childIds to Firestore for parent gallery
-        _syncTaggedToFirestore();
-      });
-    } catch (_) {}
+    // Sync auto-recognized childIds to Firestore
+    _syncTaggedToFirestore();
   }
 
-  /// Crop just this face from the cached full image and return as JPEG bytes.
   Future<Uint8List?> _cropFaceBytes(int left, int top, int width, int height) async {
     if (_cachedImageBytes == null) return null;
     try {
       final original = img.decodeImage(_cachedImageBytes!);
       if (original == null) return null;
-
-      // Add 20% padding around the face for better recognition
       final padW = (width * 0.2).toInt();
       final padH = (height * 0.2).toInt();
       final cropLeft = (left - padW).clamp(0, original.width - 1);
       final cropTop = (top - padH).clamp(0, original.height - 1);
       final cropWidth = (width + padW * 2).clamp(1, original.width - cropLeft);
       final cropHeight = (height + padH * 2).clamp(1, original.height - cropTop);
-
-      final cropped = img.copyCrop(original,
-        x: cropLeft, y: cropTop,
-        width: cropWidth, height: cropHeight,
-      );
-
+      final cropped = img.copyCrop(original, x: cropLeft, y: cropTop, width: cropWidth, height: cropHeight);
       return Uint8List.fromList(img.encodeJpg(cropped, quality: 90));
     } catch (_) { return null; }
   }
@@ -178,34 +154,46 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
     showModalBottomSheet(context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 16),
-          Row(children: [
-            Container(width: 48, height: 48, decoration: BoxDecoration(color: circle.color.withValues(alpha: 0.15), shape: BoxShape.circle, border: Border.all(color: circle.color, width: 2.5)),
-              child: Center(child: Icon(Icons.person, color: circle.color, size: 24))),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Tag this face', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800)),
-              if (existingMatch != null) Text('AI: $existingMatch', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w600)),
-            ])),
-          ]),
-          const SizedBox(height: 12),
-          ..._allChildren.map((child) => ListTile(
-            leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(child.initials.isNotEmpty ? child.initials : child.name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
-            title: Text(child.name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-            trailing: _taggedChildIds.contains(child.id) ? const Icon(Icons.check_circle, color: AppColors.success, size: 20) : null,
-            onTap: () { _tagFace(circle, child.id, child.name); Navigator.pop(ctx); },
-          )),
-          const Divider(height: 24),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(controller: nameController, decoration: InputDecoration(hintText: 'Or type a NEW name...', prefixIcon: const Icon(Icons.person_add_alt_rounded, color: AppColors.accent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none), filled: true, fillColor: AppColors.surfaceVariant),
-              onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
-          const SizedBox(height: 8),
-          TextButton(onPressed: () { final name = nameController.text.trim(); if (name.isNotEmpty) { _addNewName(circle, name); Navigator.pop(ctx); } }, child: const Text('Add & Tag')),
-          const SizedBox(height: 16),
-        ])));
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (ctx, scrollController) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: ListView(
+            controller: scrollController,
+            shrinkWrap: true,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 16),
+              Row(children: [
+                Container(width: 48, height: 48, decoration: BoxDecoration(color: circle.color.withValues(alpha: 0.15), shape: BoxShape.circle, border: Border.all(color: circle.color, width: 2.5)),
+                  child: Center(child: Icon(Icons.person, color: circle.color, size: 24))),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text('Tag this face', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800)),
+                  if (existingMatch != null) Text('AI: $existingMatch', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w600)),
+                ])),
+              ]),
+              const SizedBox(height: 12),
+              ..._allChildren.map((child) => ListTile(
+                leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(child.initials.isNotEmpty ? child.initials : child.name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
+                title: Text(child.name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                trailing: _taggedChildIds.contains(child.id) ? const Icon(Icons.check_circle, color: AppColors.success, size: 20) : null,
+                onTap: () { _tagFace(circle, child.id, child.name); Navigator.pop(ctx); },
+              )),
+              const Divider(height: 24),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(controller: nameController, decoration: InputDecoration(hintText: 'Or type a NEW name...', prefixIcon: const Icon(Icons.person_add_alt_rounded, color: AppColors.accent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none), filled: true, fillColor: AppColors.surfaceVariant),
+                  onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
+              const SizedBox(height: 8),
+              TextButton(onPressed: () { final name = nameController.text.trim(); if (name.isNotEmpty) { _addNewName(circle, name); Navigator.pop(ctx); } }, child: const Text('Add & Tag')),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ));
   }
 
   void _addNewName(_FaceCircle circle, String name) {
@@ -218,14 +206,11 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     setState(() { if (!_taggedChildIds.contains(childId)) _taggedChildIds.add(childId); circle.matchedChildId = childId; circle.childName = childName; circle.confidence = null; });
     ref.read(teacherPhotoStateProvider.notifier).updateTags(widget.photo.id, _taggedChildIds);
 
-    // Save childIds to Firestore so parent gallery sees tagged photos
     try {
-      await FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
-        'childIds': _taggedChildIds,
-      });
+      await FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({'childIds': _taggedChildIds});
     } catch (_) {}
 
-    // ENROLL this face in InsightFace so it gets recognized next time
+    // Enroll this face in InsightFace for future recognition
     if (_cachedImageBytes != null) {
       try {
         final cropBytes = await _cropFaceBytes(circle.faceLeft, circle.faceTop, circle.faceWidth, circle.faceHeight);
@@ -240,9 +225,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   void _syncTaggedToFirestore() {
     try {
-      FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
-        'childIds': _taggedChildIds,
-      });
+      FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({'childIds': _taggedChildIds});
     } catch (_) {}
   }
 
@@ -256,6 +239,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
         actions: [_faceCircles.isNotEmpty ? Center(child: Padding(padding: const EdgeInsets.only(right: 16), child: Text('$taggedCount/${_faceCircles.length} tagged', style: GoogleFonts.nunito(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)))) : const SizedBox.shrink()]),
       body: Column(children: [
         if (_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.white, child: const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text('🤖 AI detecting & recognizing faces...')])),
+        if (_faceError != null && !_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.amber.shade50, child: Row(children: [const Icon(Icons.info_outline, color: Colors.amber, size: 18), const SizedBox(width: 8), Expanded(child: Text(_faceError!, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600)))])),
         Expanded(child: Container(color: Colors.black, child: LayoutBuilder(builder: (ctx, c) {
           final cw = c.maxWidth, ch = c.maxHeight; double dw, dh, ox, oy;
           final ia = _imgWidth / (_imgHeight > 0 ? _imgHeight : 1);
@@ -281,12 +265,38 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   void _showManualTagDialog() {
     showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setModalState) => Padding(padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 16), Text('Tag Kids in Photo', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800)),
-          ..._allChildren.map((child) => CheckboxListTile(value: _taggedChildIds.contains(child.id), onChanged: (val) { setModalState(() { if (val == true) _taggedChildIds.add(child.id); else _taggedChildIds.remove(child.id); }); ref.read(teacherPhotoStateProvider.notifier).updateTags(widget.photo.id, _taggedChildIds); }, title: Text(child.name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)))),
-          const SizedBox(height: 16)]))));
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (ctx, scrollController) => StatefulBuilder(
+          builder: (ctx, setModalState) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
+            child: ListView(
+              controller: scrollController,
+              shrinkWrap: true,
+              children: [
+                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.textTertiary.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 16),
+                Text('Tag Kids in Photo', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800)),
+                ..._allChildren.map((child) => CheckboxListTile(
+                  value: _taggedChildIds.contains(child.id),
+                  onChanged: (val) {
+                    setModalState(() {
+                      if (val == true) _taggedChildIds.add(child.id);
+                      else _taggedChildIds.remove(child.id);
+                    });
+                    ref.read(teacherPhotoStateProvider.notifier).updateTags(widget.photo.id, _taggedChildIds);
+                  },
+                  title: Text(child.name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                )),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      )));
   }
 }
 

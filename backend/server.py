@@ -152,6 +152,84 @@ def list_enrolled():
         for kid, info in _enrolled.items()
     ])
 
+@app.route('/detect_and_recognize', methods=['POST'])
+def detect_and_recognize():
+    """
+    Unified endpoint: takes an image URL, downloads it,
+    detects all faces, extracts embeddings, and matches against enrolled children.
+    Returns bounding boxes + recognition results in one response.
+    """
+    data = request.get_json(silent=True) or {}
+    image_url = data.get('image_url', '')
+    if not image_url:
+        return jsonify({'error': 'Missing image_url'}), 400
+
+    # Download image from URL
+    import urllib.request
+    try:
+        req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
+        img_bytes = urllib.request.urlopen(req, timeout=30).read()
+    except Exception as e:
+        return jsonify({'error': f'Failed to download image: {str(e)}'}), 400
+
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    import cv2
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({'error': 'Invalid image'}), 400
+
+    img_height, img_width = img.shape[:2]
+
+    # Run InsightFace detection + embedding in one shot
+    faces = get_face_app().get(img)
+    if not faces:
+        return jsonify({'faces': [], 'image_width': img_width, 'image_height': img_height})
+
+    enrolled_ids = list(_enrolled.keys())
+    results = []
+
+    for face in faces:
+        bbox = face.bbox.astype(float)
+        left, top, right, bottom = bbox[0], bbox[1], bbox[2], bbox[3]
+        width = right - left
+        height = bottom - top
+
+        face_result = {
+            'left': round(left, 1),
+            'top': round(top, 1),
+            'width': round(width, 1),
+            'height': round(height, 1),
+            'matched': False,
+            'child_id': None,
+            'name': None,
+            'confidence': None,
+        }
+
+        if enrolled_ids and face.embedding is not None:
+            embedding = face.embedding
+            best_score = 0
+            best_match = None
+            for child_id, info in _enrolled.items():
+                for stored_emb in info['embeddings']:
+                    score = cosine_similarity(embedding, stored_emb)
+                    if score > best_score:
+                        best_score = score
+                        best_match = {'child_id': child_id, 'name': info['name'], 'score': float(score)}
+
+            if best_match and best_score > 0.35:
+                face_result['matched'] = True
+                face_result['child_id'] = best_match['child_id']
+                face_result['name'] = best_match['name']
+                face_result['confidence'] = round(best_match['score'] * 100, 1)
+
+        results.append(face_result)
+
+    return jsonify({
+        'faces': results,
+        'image_width': img_width,
+        'image_height': img_height,
+    })
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'enrolled_count': len(_enrolled)})
