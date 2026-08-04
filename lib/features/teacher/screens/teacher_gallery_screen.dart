@@ -245,7 +245,17 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
                           if (_selectionMode) {
                             _toggleSelection(photo.id);
                           } else {
-                            context.push('/teacher/photo/${photo.id}', extra: photo);
+                            if (photo.childIds.isNotEmpty) {
+                              // Already tagged — use simple photo viewer
+                              final allPhotosList = filteredPhotos;
+                              final photoIdx = allPhotosList.indexWhere((p) => p.id == photo.id);
+                              context.push('/parent/photo-viewer', extra: {
+                                'photos': allPhotosList,
+                                'index': photoIdx >= 0 ? photoIdx : 0,
+                              });
+                            } else {
+                              context.push('/teacher/photo/${photo.id}', extra: photo);
+                            }
                           }
                         },
                         onLongPress: () {

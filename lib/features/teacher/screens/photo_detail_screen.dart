@@ -333,7 +333,8 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       const SizedBox(height: 10),
       Wrap(spacing: 8, runSpacing: 6,
         children: widget.photo.aiDetections.map((d) {
-          final child = _allChildren.firstWhere((c) => c.id == d.childId, orElse: () => ChildOption(id: d.childId, name: d.childId, initials: d.childId[0].toUpperCase()));
+          final name = d.childId.isNotEmpty ? d.childId.toString() : 'Unknown';
+          final child = _allChildren.firstWhere((c) => c.id == d.childId, orElse: () => ChildOption(id: d.childId, name: name, initials: name.isNotEmpty ? name[0].toUpperCase() : '?'));
           return Chip(
             avatar: CircleAvatar(backgroundColor: AppColors.success.withValues(alpha: 0.15), child: Text(child.initials, style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success))),
             label: Text('${child.name} (${(d.confidence * 100).toInt()}%)', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600)),
