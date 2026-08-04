@@ -65,6 +65,13 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   Future<void> _loadFaces() async {
     if (!widget.photo.url.startsWith('https://')) return;
+
+    // If photo already has tagged children with AI detections, skip the AI call
+    if (widget.photo.childIds.isNotEmpty && widget.photo.aiDetections.isNotEmpty) {
+      setState(() { _isDetecting = false; _imgWidth = 4000; _imgHeight = 3000; });
+      return;
+    }
+
     setState(() => _isDetecting = true);
 
     try {
@@ -155,7 +162,6 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   }
 
   Future<void> _doneTagging() async {
-    // Only sync to Firestore when teacher explicitly finishes
     try {
       await FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
         'childIds': _taggedChildIds,
@@ -167,7 +173,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Done — ${_handledCount} face(s) handled'),
+          content: Text('✅ Done — $_handledCount face(s) handled'),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
         ),
@@ -254,11 +260,10 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       circle.matchedChildId = childId;
       circle.childName = childName;
       circle.confidence = null;
-      circle.isNeglected = false; // clear neglect if previously neglected
+      circle.isNeglected = false;
     });
     _updateGalleryState();
 
-    // Enroll face for future recognition
     if (_cachedImageBytes != null) {
       try {
         final cropBytes = await _cropFaceBytes(circle.faceLeft, circle.faceTop, circle.faceWidth, circle.faceHeight);
@@ -272,11 +277,12 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   }
 
   @override Widget build(BuildContext context) {
+    final alreadyTagged = widget.photo.childIds.isNotEmpty && widget.photo.aiDetections.isNotEmpty;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(backgroundColor: Colors.black, elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white), onPressed: () => context.pop()),
-        title: Text('Tag Faces', style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700)),
+        title: Text(alreadyTagged ? 'Tagged Kids' : 'Tag Faces', style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700)),
         actions: [_faceCircles.isNotEmpty ? Center(child: Padding(padding: const EdgeInsets.only(right: 16), child: Text('$_handledCount/${_faceCircles.length} handled', style: GoogleFonts.nunito(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)))) : const SizedBox.shrink()]),
       body: Column(children: [
         if (_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.white, child: const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text('🤖 AI detecting & recognizing faces...')])),
@@ -295,40 +301,49 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
           ]);
         }))),
         Container(width: double.infinity, padding: const EdgeInsets.all(20), color: Colors.white,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            if (_faceCircles.isNotEmpty) ...[
-              Row(children: [
-                Text('🤖 Face Status', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                const Spacer(),
-                Text('$_handledCount tagged · $_neglectedCount neglected · $_remainingCount left',
-                  style: GoogleFonts.nunito(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                _LegendDot(color: AppColors.success, label: 'Tagged'),
-                const SizedBox(width: 12),
-                _LegendDot(color: AppColors.textTertiary, label: 'Neglected'),
-                const SizedBox(width: 12),
-                _LegendDot(color: Colors.blue, label: 'Needs action'),
-              ]),
-              const SizedBox(height: 14),
-            ],
-            if (_faceCircles.isEmpty)
-              Text('Tag Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            if (_allFacesHandled && _faceCircles.isNotEmpty)
-              SizedBox(width: double.infinity, height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _doneTagging,
-                  icon: const Icon(Icons.check_circle, size: 20),
-                  label: Text('✅ Done — $_handledCount kid(s)', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white),
-                ),
+          child: alreadyTagged
+              ? _buildTaggedInfo()
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  if (_faceCircles.isNotEmpty) ...[
+                    Row(children: [
+                      Text('🤖 Face Status', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      const Spacer(),
+                      Text('$_handledCount tagged · $_neglectedCount neglected · $_remainingCount left', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                    ]),
+                    const SizedBox(height: 10),
+                    Row(children: [const _LegendDot(color: AppColors.success, label: 'Tagged'), const SizedBox(width: 12), const _LegendDot(color: AppColors.textTertiary, label: 'Neglected'), const SizedBox(width: 12), const _LegendDot(color: Colors.blue, label: 'Needs action')]),
+                    const SizedBox(height: 14),
+                  ],
+                  if (_faceCircles.isEmpty) Text('Tag Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  if (_allFacesHandled && _faceCircles.isNotEmpty)
+                    SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(onPressed: _doneTagging, icon: const Icon(Icons.check_circle, size: 20), label: Text('✅ Done — $_handledCount kid(s)', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white))),
+                  if (!_allFacesHandled || _faceCircles.isEmpty)
+                    SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.person_add_alt_rounded, size: 20), label: Text('Tag Kids Manually', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
+                ],
               ),
-            if (!_allFacesHandled || _faceCircles.isEmpty)
-              SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.person_add_alt_rounded, size: 20), label: Text('Tag Kids Manually', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
-          ])),
-      ]));
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildTaggedInfo() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text('✅ Tagged Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 6,
+        children: widget.photo.aiDetections.map((d) {
+          final child = _allChildren.firstWhere((c) => c.id == d.childId, orElse: () => ChildOption(id: d.childId, name: d.childId, initials: d.childId[0].toUpperCase()));
+          return Chip(
+            avatar: CircleAvatar(backgroundColor: AppColors.success.withValues(alpha: 0.15), child: Text(child.initials, style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success))),
+            label: Text('${child.name} (${(d.confidence * 100).toInt()}%)', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600)),
+            backgroundColor: AppColors.success.withValues(alpha: 0.08), side: BorderSide.none,
+          );
+        }).toList(),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.edit, size: 20), label: Text('Edit Tags', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
+    ]);
   }
 
   void _showManualTagDialog() {
@@ -346,8 +361,8 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 value: _taggedChildIds.contains(child.id),
                 onChanged: (val) {
                   setModalState(() {
-                    if (val == true) _taggedChildIds.add(child.id);
-                    else _taggedChildIds.remove(child.id);
+                    if (val == true) { _taggedChildIds.add(child.id); }
+                    else { _taggedChildIds.remove(child.id); }
                   });
                   _updateGalleryState();
                 },
@@ -363,11 +378,10 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 class _FaceCircle {
   final String id; final int index; final Color color; final Rect rect;
   String? matchedChildId; String? childName; double? confidence;
-  bool isNeglected;
+  bool isNeglected = false;
   final int faceLeft, faceTop, faceWidth, faceHeight;
 
   _FaceCircle({required this.id, required this.index, required this.color, required this.rect,
-    this.matchedChildId, this.childName, this.confidence, this.isNeglected = false,
     required this.faceLeft, required this.faceTop, required this.faceWidth, required this.faceHeight});
 
   bool get isHandled => matchedChildId != null || isNeglected;
