@@ -239,7 +239,7 @@ class _PhotoGrid extends StatelessWidget {
           return _PhotoCard(photo: photo, height: (index % 3 == 0) ? 220.0 : 160.0, onTap: () {
             final allPhotos = photos;
             final photoIdx = allPhotos.indexWhere((p) => p.id == photo.id);
-            context.push('/parent/photo-viewer', extra: {'photos': allPhotos, 'index': photoIdx >= 0 ? photoIdx : 0});
+            context.push('/photo-viewer', extra: {'photos': allPhotos, 'index': photoIdx >= 0 ? photoIdx : 0});
           });
         },
       ),

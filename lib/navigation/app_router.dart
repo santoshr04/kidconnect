@@ -124,22 +124,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
-            path: '/parent/photo-viewer',
-            pageBuilder: (context, state) {
-              final extra = state.extra as Map<String, dynamic>;
-              return CustomTransitionPage(
-                child: ParentPhotoViewerScreen(
-                  photos: (extra['photos'] as List).cast<PhotoModel>(),
-                  initialIndex: extra['index'] as int,
-                ),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-              );
-            },
-          ),
-          GoRoute(
             path: '/parent/face-setup',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: FaceEnrollmentScreen(),
@@ -178,6 +162,24 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
+      ),
+
+      // ─── Shared Photo Viewer (no shell, works for teacher + parent) ───
+      GoRoute(
+        path: '/photo-viewer',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CustomTransitionPage(
+            child: ParentPhotoViewerScreen(
+              photos: (extra['photos'] as List).cast<PhotoModel>(),
+              initialIndex: extra['index'] as int,
+            ),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          );
+        },
       ),
 
       // ─── Standalone Routes ────────────────────────────

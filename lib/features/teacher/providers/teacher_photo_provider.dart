@@ -52,21 +52,23 @@ class UploadState {
 
 /// Compression helper.
 Future<File> compressImage(File file) async {
-  final dir = await getTemporaryDirectory();
-  final targetPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.webp';
+  try {
+    final dir = await getTemporaryDirectory();
+    final targetPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.webp';
 
-  final result = await FlutterImageCompress.compressAndGetFile(
-    file.absolute.path,
-    targetPath,
-    minWidth: 1024,
-    minHeight: 1024,
-    quality: 75,
-    format: CompressFormat.webp,
-  );
+    final result = await FlutterImageCompress.compressAndGetFile(
+      file.absolute.path,
+      targetPath,
+      minWidth: 720,
+      minHeight: 720,
+      quality: 65,
+      format: CompressFormat.webp,
+    );
 
-  if (result != null && File(result.path).lengthSync() < file.lengthSync()) {
-    return File(result.path);
-  }
+    if (result != null && File(result.path).lengthSync() < file.lengthSync()) {
+      return File(result.path);
+    }
+  } catch (_) {}
   return file;
 }
 
@@ -202,8 +204,10 @@ class UploadNotifier extends StateNotifier<UploadState> {
         doneStatus[localId] = 'done';
         state = state.copyWith(fileUploadStatus: doneStatus);
 
-        // AUTO-TAG: Run face detection + recognition in background
-        _autoTagPhoto(result.id, result.url);
+        // AUTO-TAG: Run face detection + recognition in background after short delay
+        Future.delayed(const Duration(seconds: 2), () {
+          _autoTagPhoto(result.id, result.url);
+        });
       } else {
         final errStatus = Map<String, String>.from(state.fileUploadStatus);
         errStatus[localId] = 'error';
@@ -281,29 +285,40 @@ bool isPhotoPending(PhotoModel photo) => photo.tags.contains('__pending__');
 /// then updates Firestore with recognized childIds.
 Future<void> _autoTagPhoto(String photoId, String photoUrl) async {
   try {
+    final healthy = await InsightFaceService.isHealthy();
+    if (!healthy) return;
+
     final result = await InsightFaceService.detectAndRecognize(photoUrl);
     if (result.error != null || result.faces.isEmpty) return;
 
+    final totalFaces = result.faces.length;
     final childIds = <String>[];
     final aiDetections = <Map<String, dynamic>>[];
+    int matchedCount = 0;
     for (final face in result.faces) {
       if (face.matched && face.childId != null) {
+        matchedCount++;
         if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
-        aiDetections.add({
-          'childId': face.childId,
-          'confidence': face.confidence ?? 0,
-        });
       }
+      aiDetections.add({
+        'childId': face.childId ?? '',
+        'confidence': face.confidence ?? 0,
+        'matched': face.matched,
+      });
     }
 
-    if (childIds.isNotEmpty) {
+    // Only auto-complete if ALL faces are recognized
+    if (matchedCount == totalFaces && childIds.isNotEmpty) {
       await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
         'childIds': childIds,
         'aiDetections': aiDetections,
+        'totalFaces': totalFaces,
+        'taggedFaces': matchedCount,
       });
     }
-  } catch (_) {
-    // Silently fail — teacher can still manually tag
+    // If some faces unrecognized, don't update childIds — stays in Needs Review
+  } catch (e) {
+    print('Auto-tag failed: $e');
   }
 }
 
@@ -314,26 +329,38 @@ Future<int> _autoTagAllPhotos() async {
   try {
     final snapshot = await FirebaseFirestore.instance
         .collection('photos')
-        .where('childIds', isEqualTo: [])
         .get();
     for (final doc in snapshot.docs) {
-      final url = doc.data()['url'] as String?;
+      final data = doc.data();
+      final existingChildIds = List<String>.from(data['childIds'] ?? []);
+      if (existingChildIds.isNotEmpty) continue; // Skip already tagged
+      final url = data['url'] as String?;
       if (url == null || !url.startsWith('https://')) continue;
       try {
         final result = await InsightFaceService.detectAndRecognize(url);
         if (result.error != null || result.faces.isEmpty) continue;
+        final totalFaces = result.faces.length;
         final childIds = <String>[];
         final aiDetections = <Map<String, dynamic>>[];
+        int matchedCount = 0;
         for (final face in result.faces) {
           if (face.matched && face.childId != null) {
+            matchedCount++;
             if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
-            aiDetections.add({'childId': face.childId, 'confidence': face.confidence ?? 0});
           }
+          aiDetections.add({
+            'childId': face.childId ?? '',
+            'confidence': face.confidence ?? 0,
+            'matched': face.matched,
+          });
         }
-        if (childIds.isNotEmpty) {
+        // Only complete if ALL faces are recognized
+        if (matchedCount == totalFaces && childIds.isNotEmpty) {
           await doc.reference.update({
             'childIds': childIds,
             'aiDetections': aiDetections,
+            'totalFaces': totalFaces,
+            'taggedFaces': matchedCount,
           });
           count++;
         }

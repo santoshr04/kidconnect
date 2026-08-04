@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to read and write photos
+    match /photos/{userId}/{photoId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+    // Allow authenticated users to read any file
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+  }
+}

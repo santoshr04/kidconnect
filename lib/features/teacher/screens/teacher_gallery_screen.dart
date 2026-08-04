@@ -33,33 +33,39 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('photos')
-          .where('childIds', isEqualTo: [])
           .get();
-      final untagged = snapshot.docs;
-      if (untagged.isEmpty && mounted) {
+      final docs = snapshot.docs.where((d) {
+        final cids = List<String>.from(d.data()['childIds'] ?? []);
+        return cids.isEmpty;
+      }).toList();
+      if (docs.isEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ All photos are already tagged!')));
         setState(() => _isAutoTagging = false);
         return;
       }
       int count = 0;
-      for (int i = 0; i < untagged.length; i++) {
-        final doc = untagged[i];
+      for (int i = 0; i < docs.length; i++) {
+        final doc = docs[i];
         final url = doc.data()['url'] as String?;
         if (url == null || !url.startsWith('https://')) continue;
         setState(() => _autoTagProgress = i + 1);
         try {
           final result = await InsightFaceService.detectAndRecognize(url);
           if (result.error != null || result.faces.isEmpty) continue;
+          final totalFaces = result.faces.length;
           final childIds = <String>[];
           final aiDetections = <Map<String, dynamic>>[];
+          int matchedCount = 0;
           for (final face in result.faces) {
             if (face.matched && face.childId != null) {
+              matchedCount++;
               if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
-              aiDetections.add({'childId': face.childId, 'confidence': face.confidence ?? 0});
             }
+            aiDetections.add({'childId': face.childId ?? '', 'confidence': face.confidence ?? 0, 'matched': face.matched});
           }
-          if (childIds.isNotEmpty) {
-            await doc.reference.update({'childIds': childIds, 'aiDetections': aiDetections});
+          // Only auto-complete if ALL faces are recognized
+          if (matchedCount == totalFaces && childIds.isNotEmpty) {
+            await doc.reference.update({'childIds': childIds, 'aiDetections': aiDetections, 'totalFaces': totalFaces, 'taggedFaces': matchedCount});
             count++;
           }
         } catch (_) {}
@@ -159,8 +165,17 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     final sessionPhotos = ref.watch(allTeacherPhotosProvider);
     final firestorePhotos = ref.watch(firestorePhotosProvider).valueOrNull ?? [];
     final uploadState = ref.watch(uploadStateProvider);
+    // Deduplicate by ID: prefer session photos, add Firestore photos only if ID not already present
     final seen = <String>{};
-    final allPhotos = <PhotoModel>[...sessionPhotos, ...firestorePhotos.where((p) => seen.add(p.id))];
+    final allPhotos = <PhotoModel>[];
+    for (final p in sessionPhotos) {
+      if (seen.add(p.id)) allPhotos.add(p);
+    }
+    for (final p in firestorePhotos) {
+      // Also check URL to avoid same photo with different IDs (pending vs real)
+      final alreadyByUrl = allPhotos.any((existing) => existing.url == p.url);
+      if (seen.add(p.id) && !alreadyByUrl) allPhotos.add(p);
+    }
 
     List<PhotoModel> filteredPhotos;
     switch (_filter) { case 'tagged': filteredPhotos = allPhotos.where((p) => p.childIds.isNotEmpty).toList(); break; case 'pending': filteredPhotos = allPhotos.where((p) => p.childIds.isEmpty).toList(); break; default: filteredPhotos = allPhotos; }
@@ -249,7 +264,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
                               // Already tagged — use simple photo viewer
                               final allPhotosList = filteredPhotos;
                               final photoIdx = allPhotosList.indexWhere((p) => p.id == photo.id);
-                              context.push('/parent/photo-viewer', extra: {
+                              context.push('/photo-viewer', extra: {
                                 'photos': allPhotosList,
                                 'index': photoIdx >= 0 ? photoIdx : 0,
                               });
