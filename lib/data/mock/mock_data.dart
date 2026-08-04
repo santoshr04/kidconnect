@@ -320,6 +320,113 @@ class MockData {
       uploadDate: DateTime.now().subtract(const Duration(days: 2)),
       tags: ['snack', 'sharing', 'friends'],
     ),
+    // Aarav photos
+    PhotoModel(
+      id: 'photo_aarav_1',
+      url: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa',
+      ),
+      caption: 'Aarav playing with building blocks 🧱',
+      childIds: ['child_aarav'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_aarav', confidence: 0.96),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(hours: 1)),
+      tags: ['blocks', 'play', 'building'],
+    ),
+    PhotoModel(
+      id: 'photo_aarav_2',
+      url: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9',
+      ),
+      caption: 'Aarav showing his artwork 🎨',
+      childIds: ['child_aarav'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_aarav', confidence: 0.94),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 1)),
+      tags: ['art', 'drawing', 'creative'],
+    ),
+    // Ananya photos
+    PhotoModel(
+      id: 'photo_ananya_1',
+      url: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30',
+      ),
+      caption: 'Ananya painting with watercolors 🖌️',
+      childIds: ['child_ananya'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ananya', confidence: 0.95),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(hours: 2)),
+      tags: ['art', 'painting', 'watercolor'],
+    ),
+    PhotoModel(
+      id: 'photo_ananya_2',
+      url: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74',
+      ),
+      caption: 'Story time — Ananya loves books 📚',
+      childIds: ['child_ananya'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ananya', confidence: 0.93),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 1)),
+      tags: ['reading', 'books', 'story'],
+    ),
+    // Group photos with Aarav & Ananya
+    PhotoModel(
+      id: 'photo_group_aarav',
+      url: 'https://images.unsplash.com/photo-1472162072942-cd5147eb3902?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1472162072942-cd5147eb3902?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1472162072942-cd5147eb3902?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1472162072942-cd5147eb3902',
+      ),
+      caption: 'Playground fun — Aarav & friends ☀️',
+      childIds: ['child_aarav', 'child_1'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_aarav', confidence: 0.90),
+        const FaceDetection(childId: 'child_1', confidence: 0.92),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 3)),
+      tags: ['outdoor', 'playground', 'fun'],
+    ),
+    PhotoModel(
+      id: 'photo_group_ananya',
+      url: 'https://images.unsplash.com/photo-1535572290543-960a8046f5af?w=400',
+      resolutions: const PhotoResolutions(
+        thumbnail: 'https://images.unsplash.com/photo-1535572290543-960a8046f5af?w=200&q=60',
+        optimized: 'https://images.unsplash.com/photo-1535572290543-960a8046f5af?w=800&q=80',
+        original: 'https://images.unsplash.com/photo-1535572290543-960a8046f5af',
+      ),
+      caption: 'Yoga class — Ananya & group 🧘',
+      childIds: ['child_ananya', 'child_3'],
+      aiDetections: [
+        const FaceDetection(childId: 'child_ananya', confidence: 0.91),
+        const FaceDetection(childId: 'child_3', confidence: 0.89),
+      ],
+      uploadedBy: 'teacher_1',
+      uploadDate: DateTime.now().subtract(const Duration(days: 4)),
+      tags: ['yoga', 'exercise', 'group'],
+    ),
   ];
 
   static final List<MessageModel> messages = [
