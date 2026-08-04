@@ -178,7 +178,16 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     }
 
     List<PhotoModel> filteredPhotos;
-    switch (_filter) { case 'tagged': filteredPhotos = allPhotos.where((p) => p.childIds.isNotEmpty).toList(); break; case 'pending': filteredPhotos = allPhotos.where((p) => p.childIds.isEmpty).toList(); break; default: filteredPhotos = allPhotos; }
+    switch (_filter) {
+      case 'tagged':
+        filteredPhotos = allPhotos.where((p) => p.childIds.isNotEmpty).toList();
+        break;
+      case 'pending':
+        filteredPhotos = allPhotos.where((p) => p.childIds.isEmpty || p.tags.contains('__needs_review__')).toList();
+        break;
+      default:
+        filteredPhotos = allPhotos;
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,

@@ -168,6 +168,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
       fileUploadStatus: initialStatus,
     );
 
+    // Collect uploaded photos for background auto-tagging after all uploads
+    final uploadedPhotos = <Map<String, String>>[];
+
     for (int i = 0; i < files.length; i++) {
       final localId = localIds[i];
 
@@ -204,10 +207,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
         doneStatus[localId] = 'done';
         state = state.copyWith(fileUploadStatus: doneStatus);
 
-        // AUTO-TAG: Run face detection + recognition in background after short delay
-        Future.delayed(const Duration(seconds: 2), () {
-          _autoTagPhoto(result.id, result.url);
-        });
+        // Collect for background auto-tagging (non-blocking)
+        uploadedPhotos.add({'id': result.id, 'url': result.url});
       } else {
         final errStatus = Map<String, String>.from(state.fileUploadStatus);
         errStatus[localId] = 'error';
@@ -215,6 +216,11 @@ class UploadNotifier extends StateNotifier<UploadState> {
       }
 
       state = state.copyWith(completedFiles: i + 1);
+    }
+
+    // Fire-and-forget background auto-tagging for ALL uploaded photos
+    if (uploadedPhotos.isNotEmpty) {
+      _autoTagBatch(uploadedPhotos);
     }
 
     state = UploadState(
@@ -283,6 +289,55 @@ bool isPhotoPending(PhotoModel photo) => photo.tags.contains('__pending__');
 
 /// Auto-tag a single photo: runs InsightFace detection + recognition,
 /// then updates Firestore with recognized childIds.
+/// Non-blocking background auto-tag for a batch of uploaded photos.
+void _autoTagBatch(List<Map<String, String>> photos) {
+  for (final photo in photos) {
+    _autoTagPhotoAsync(photo['id']!, photo['url']!);
+  }
+}
+
+Future<void> _autoTagPhotoAsync(String photoId, String photoUrl) async {
+  // Small stagger to avoid overwhelming the server
+  await Future.delayed(const Duration(milliseconds: 500));
+  try {
+    final healthy = await InsightFaceService.isHealthy();
+    if (!healthy) return;
+
+    final result = await InsightFaceService.detectAndRecognize(photoUrl);
+    if (result.error != null || result.faces.isEmpty) return;
+
+    final totalFaces = result.faces.length;
+    final childIds = <String>[];
+    final aiDetections = <Map<String, dynamic>>[];
+    int matchedCount = 0;
+    for (final face in result.faces) {
+      if (face.matched && face.childId != null) {
+        matchedCount++;
+        if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+      }
+      aiDetections.add({
+        'childId': face.childId ?? '',
+        'confidence': face.confidence ?? 0,
+        'matched': face.matched,
+      });
+    }
+
+    // ALWAYS save recognized childIds so parents see photos immediately
+    // even if not all faces are matched yet
+    if (childIds.isNotEmpty) {
+      await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
+        'childIds': childIds,
+        'aiDetections': aiDetections,
+        'totalFaces': totalFaces,
+        'taggedFaces': matchedCount,
+      });
+    }
+  } catch (e) {
+    print('Auto-tag failed: $e');
+  }
+}
+
+/// Auto-tag a single photo (legacy for photo detail screen).
 Future<void> _autoTagPhoto(String photoId, String photoUrl) async {
   try {
     final healthy = await InsightFaceService.isHealthy();
@@ -307,8 +362,8 @@ Future<void> _autoTagPhoto(String photoId, String photoUrl) async {
       });
     }
 
-    // Only auto-complete if ALL faces are recognized
-    if (matchedCount == totalFaces && childIds.isNotEmpty) {
+    // Always save recognized childIds — partial is better than nothing
+    if (childIds.isNotEmpty) {
       await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
         'childIds': childIds,
         'aiDetections': aiDetections,
@@ -316,7 +371,6 @@ Future<void> _autoTagPhoto(String photoId, String photoUrl) async {
         'taggedFaces': matchedCount,
       });
     }
-    // If some faces unrecognized, don't update childIds — stays in Needs Review
   } catch (e) {
     print('Auto-tag failed: $e');
   }
