@@ -2,9 +2,11 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/mock/mock_data.dart';
 import '../../../data/repositories/photo_repository.dart';
+import '../../../core/services/insight_face_service.dart';
 
 /// Upload state shared across screens.
 class UploadState {
@@ -199,6 +201,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
         final doneStatus = Map<String, String>.from(state.fileUploadStatus);
         doneStatus[localId] = 'done';
         state = state.copyWith(fileUploadStatus: doneStatus);
+
+        // AUTO-TAG: Run face detection + recognition in background
+        _autoTagPhoto(result.id, result.url);
       } else {
         final errStatus = Map<String, String>.from(state.fileUploadStatus);
         errStatus[localId] = 'error';
@@ -269,5 +274,76 @@ final firestorePhotosProvider = StreamProvider<List<PhotoModel>>((ref) {
   }
 });
 
-/// Helper to check if a photo is still uploading.
+  /// Helper to check if a photo is still uploading.
 bool isPhotoPending(PhotoModel photo) => photo.tags.contains('__pending__');
+
+/// Auto-tag a single photo: runs InsightFace detection + recognition,
+/// then updates Firestore with recognized childIds.
+Future<void> _autoTagPhoto(String photoId, String photoUrl) async {
+  try {
+    final result = await InsightFaceService.detectAndRecognize(photoUrl);
+    if (result.error != null || result.faces.isEmpty) return;
+
+    final childIds = <String>[];
+    final aiDetections = <Map<String, dynamic>>[];
+    for (final face in result.faces) {
+      if (face.matched && face.childId != null) {
+        if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+        aiDetections.add({
+          'childId': face.childId,
+          'confidence': face.confidence ?? 0,
+        });
+      }
+    }
+
+    if (childIds.isNotEmpty) {
+      await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
+        'childIds': childIds,
+        'aiDetections': aiDetections,
+      });
+    }
+  } catch (_) {
+    // Silently fail — teacher can still manually tag
+  }
+}
+
+/// Auto-tag all untagged photos in the gallery.
+/// Used by the "Auto-Tag All" button.
+Future<int> _autoTagAllPhotos() async {
+  int count = 0;
+  try {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('photos')
+        .where('childIds', isEqualTo: [])
+        .get();
+    for (final doc in snapshot.docs) {
+      final url = doc.data()['url'] as String?;
+      if (url == null || !url.startsWith('https://')) continue;
+      try {
+        final result = await InsightFaceService.detectAndRecognize(url);
+        if (result.error != null || result.faces.isEmpty) continue;
+        final childIds = <String>[];
+        final aiDetections = <Map<String, dynamic>>[];
+        for (final face in result.faces) {
+          if (face.matched && face.childId != null) {
+            if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+            aiDetections.add({'childId': face.childId, 'confidence': face.confidence ?? 0});
+          }
+        }
+        if (childIds.isNotEmpty) {
+          await doc.reference.update({
+            'childIds': childIds,
+            'aiDetections': aiDetections,
+          });
+          count++;
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return count;
+}
+
+/// Provider for auto-tagging all photos.
+final autoTagProvider = FutureProvider.family<int, int>((ref, trigger) async {
+  return _autoTagAllPhotos();
+});

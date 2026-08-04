@@ -6,10 +6,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/repositories/photo_repository.dart';
+import '../../../core/services/insight_face_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/teacher_photo_provider.dart';
 
@@ -23,6 +25,53 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
   String _filter = 'all';
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
+  bool _isAutoTagging = false;
+  int _autoTagProgress = 0;
+
+  Future<void> _autoTagAll() async {
+    setState(() { _isAutoTagging = true; _autoTagProgress = 0; });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('photos')
+          .where('childIds', isEqualTo: [])
+          .get();
+      final untagged = snapshot.docs;
+      if (untagged.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ All photos are already tagged!')));
+        setState(() => _isAutoTagging = false);
+        return;
+      }
+      int count = 0;
+      for (int i = 0; i < untagged.length; i++) {
+        final doc = untagged[i];
+        final url = doc.data()['url'] as String?;
+        if (url == null || !url.startsWith('https://')) continue;
+        setState(() => _autoTagProgress = i + 1);
+        try {
+          final result = await InsightFaceService.detectAndRecognize(url);
+          if (result.error != null || result.faces.isEmpty) continue;
+          final childIds = <String>[];
+          final aiDetections = <Map<String, dynamic>>[];
+          for (final face in result.faces) {
+            if (face.matched && face.childId != null) {
+              if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+              aiDetections.add({'childId': face.childId, 'confidence': face.confidence ?? 0});
+            }
+          }
+          if (childIds.isNotEmpty) {
+            await doc.reference.update({'childIds': childIds, 'aiDetections': aiDetections});
+            count++;
+          }
+        } catch (_) {}
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(count > 0 ? '✅ Auto-tagged $count photo(s)!' : 'No faces recognized in untagged photos'), backgroundColor: count > 0 ? AppColors.success : AppColors.warning));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+    }
+    if (mounted) setState(() => _isAutoTagging = false);
+  }
 
   void _toggleSelection(String photoId) {
     setState(() {
@@ -122,9 +171,34 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
         title: _selectionMode ? Text('${_selectedIds.length} selected', style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 18)) : Text('My Gallery', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background, elevation: 0,
         leading: _selectionMode ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode) : null,
-        actions: [_selectionMode ? IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.error), onPressed: _selectedIds.isEmpty ? null : _deleteSelected) : Padding(padding: const EdgeInsets.only(right: 16), child: AvatarWidget(name: authState.currentUser?.name ?? 'Teacher', size: 36))],
+        actions: [
+          if (!_selectionMode)
+            IconButton(
+              icon: _isAutoTagging
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                  : const Icon(Icons.auto_awesome, color: AppColors.primary),
+              tooltip: 'Auto-Tag All',
+              onPressed: _isAutoTagging ? null : _autoTagAll,
+            ),
+          if (_selectionMode)
+            IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.error), onPressed: _selectedIds.isEmpty ? null : _deleteSelected)
+          else
+            Padding(padding: const EdgeInsets.only(right: 16), child: AvatarWidget(name: authState.currentUser?.name ?? 'Teacher', size: 36)),
+        ],
       ),
       body: Column(children: [
+        if (_isAutoTagging)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: AppColors.primary.withValues(alpha: 0.06),
+            child: Row(children: [
+              SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+              const SizedBox(width: 10),
+              Text('🔍 Auto-tagging... $_autoTagProgress processed',
+                  style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+            ]),
+          ),
         if (uploadState.isUploading)
           Container(
             width: double.infinity,
