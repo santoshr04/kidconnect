@@ -318,7 +318,19 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                   const SizedBox(height: 8),
                   if (_allFacesHandled && _faceCircles.isNotEmpty)
                     SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(onPressed: _doneTagging, icon: const Icon(Icons.check_circle, size: 20), label: Text('✅ Done — $_handledCount kid(s)', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white))),
-                  if (!_allFacesHandled || _faceCircles.isEmpty)
+                  if (!_allFacesHandled && _faceCircles.isNotEmpty) ...[
+                    SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.person_add_alt_rounded, size: 20), label: Text('Tag Kids Manually', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
+                    const SizedBox(height: 8),
+                    SizedBox(width: double.infinity, height: 42,
+                      child: TextButton.icon(
+                        onPressed: _neglectAllRemaining,
+                        icon: const Icon(Icons.do_not_disturb_alt_outlined, size: 18, color: Colors.grey),
+                        label: Text('🚫 Neglect All Remaining ($_remainingCount)', style: GoogleFonts.nunito(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
+                        style: TextButton.styleFrom(foregroundColor: Colors.grey),
+                      ),
+                    ),
+                  ],
+                  if (_faceCircles.isEmpty)
                     SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.person_add_alt_rounded, size: 20), label: Text('Tag Kids Manually', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
                 ],
               ),
@@ -345,6 +357,17 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       const SizedBox(height: 12),
       SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.edit, size: 20), label: Text('Edit Tags', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
     ]);
+  }
+
+  void _neglectAllRemaining() {
+    setState(() {
+      for (final c in _faceCircles) {
+        if (c.matchedChildId == null && !c.isNeglected) {
+          c.isNeglected = true;
+        }
+      }
+    });
+    _updateGalleryState();
   }
 
   void _showManualTagDialog() {
