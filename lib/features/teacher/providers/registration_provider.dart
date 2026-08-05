@@ -280,6 +280,31 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       }
     }
   }
+
+  /// Populates the form with existing data for editing.
+  void loadExisting({
+    required String parentName,
+    required String mobileNumber,
+    required String alternateMobile,
+    required List<Map<String, dynamic>> children,
+  }) {
+    final studentEntries = children.map((c) => StudentEntry(
+      name: c['name'] as String? ?? '',
+      className: c['className'] as String? ?? 'Nursery',
+      section: c['section'] as String?,
+    )).toList();
+
+    if (studentEntries.isEmpty) {
+      studentEntries.add(StudentEntry());
+    }
+
+    state = RegistrationState(
+      parentName: parentName,
+      mobileNumber: mobileNumber,
+      alternateMobile: alternateMobile,
+      children: studentEntries,
+    );
+  }
 }
 
 /// Riverpod provider for the registration state.

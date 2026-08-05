@@ -72,9 +72,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                     position: _slideAnimation,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 40),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 40),
 
                           // Animated logo
                           AnimatedBuilder(
@@ -143,7 +144,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                               ),
                             ),
                           ),
-
                           const SizedBox(height: 36),
 
                           // ─── Parent Card ─────────────────────
@@ -186,7 +186,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                             onTap: () => context.push('/login', extra: 'teacher'),
                           ),
 
-                          const Spacer(),
+                          const SizedBox(height: 36),
 
                           // Footer
                           Padding(
@@ -237,6 +237,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                   ),
                 ),
               ),
+            ),
             ),
           ),
         ],
