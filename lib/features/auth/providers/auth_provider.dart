@@ -124,14 +124,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (snap.docs.isNotEmpty) {
         final data = snap.docs.first.data();
-        final email = data['email'] as String? ?? '$phone@kidconnect.internal';
+        final parentDocId = snap.docs.first.id;
 
-        // OTP from stored document, or fallback to computed
+        // Use stable parent doc ID for email (phone-agnostic)
+        final email = '$parentDocId@kidconnect.internal';
+
+        // OTP from stored document, or fallback to computed from phone
         final storedOtp = data['otp'] as String?;
         final otp = storedOtp ?? (100000 + (phone.hashCode % 900000)).toString();
         final password = 'KC@$otp';
 
-        // Try to sign in first (existing account), if that fails try to create
+        // Try to sign in first (existing account)
         UserModel? firebaseUser;
         firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
 
@@ -144,9 +147,35 @@ class AuthNotifier extends StateNotifier<AuthState> {
           }
         }
 
+        if (firebaseUser == null) {
+          // Still failing? Try with the old-style phone-based email as fallback
+          final oldEmail = '$phone@kidconnect.internal';
+          firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
+          if (firebaseUser == null) {
+            // Create with phone-based email as last resort
+            final uid = await AuthRepository.createAccount(oldEmail, password);
+            if (uid != null) {
+              firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
+            }
+          }
+        }
+
         if (firebaseUser != null) {
+          // Look up the actual child ID (not the parent doc ID)
+          String? childId;
+          try {
+            final childSnap = await FirebaseFirestore.instance
+                .collection('children')
+                .where('parentId', isEqualTo: parentDocId)
+                .limit(1)
+                .get();
+            if (childSnap.docs.isNotEmpty) {
+              childId = childSnap.docs.first.id;
+            }
+          } catch (_) {}
+
           final userModel = UserModel(
-            id: snap.docs.first.id,
+            id: parentDocId,
             name: data['name'] as String? ?? 'Parent',
             email: email,
             role: UserRole.parent,
@@ -159,7 +188,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
             currentUser: userModel,
             isAuthenticated: true,
             isLoading: false,
-            selectedChildId: snap.docs.first.id,
+            selectedChildId: childId,
             usingMockData: false,
           );
           return true;
