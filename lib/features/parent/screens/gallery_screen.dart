@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
@@ -51,10 +52,26 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
-    final childId = authState.selectedChildId ?? 'child_ruthvi';
+    final auth = ref.watch(authProvider);
+    final childId = auth.selectedChildId ?? 'child_ruthvi';
     final child = MockData.getChildById(childId);
-    final isMock = authState.usingMockData;
+    final isMock = auth.usingMockData;
+    String childName = child?.firstName ?? 'Ruthvi';
+
+    // Fallback to Firestore for newly registered children not in mock data
+    if (child == null && !isMock) {
+      // Load child name from Firestore in a future
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final doc = await FirebaseFirestore.instance.collection('children').doc(childId).get();
+          if (doc.exists && mounted) {
+            setState(() {
+              childName = doc.data()?['name']?.toString().split(' ').first ?? 'Ruthvi';
+            });
+          }
+        } catch (_) {}
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -98,7 +115,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
                 ),
               Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: AvatarWidget(name: authState.currentUser?.name ?? 'User', size: 36),
+                child: AvatarWidget(name: auth.currentUser?.name ?? 'User', size: 36),
               ),
             ],
           ),
@@ -112,7 +129,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
               unselectedLabelColor: AppColors.textTertiary,
               labelStyle: GoogleFonts.nunito(fontWeight: FontWeight.w700, fontSize: 15),
               tabs: [
-                Tab(text: '${child?.firstName ?? "Ruthvi"}\'s Feed'),
+                Tab(text: '$childName\'s Feed'),
                 const Tab(text: 'Class Feed'),
               ],
             )),

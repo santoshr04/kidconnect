@@ -87,6 +87,83 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
   }
 
   void _enterSelectionMode(String photoId) => setState(() { _selectionMode = true; _selectedIds.add(photoId); });
+
+  /// Removes all existing tagging from all photos and re-runs AI auto-tagging.
+  Future<void> _reTagAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Re-tag All Photos?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text('This will clear all existing tagging and re-run AI recognition on every photo.\n\nPhotos tagged by parents will be overwritten.', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            child: Text('Re-tag All', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() { _isAutoTagging = true; _autoTagProgress = 0; });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('photos').get();
+      final allDocs = snapshot.docs;
+
+      int cleared = 0;
+      for (final doc in allDocs) {
+        try {
+          await doc.reference.update({'childIds': [], 'aiDetections': [], 'tags': ['__needs_review__']});
+          cleared++;
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🗑️ Cleared tags from $cleared photo(s). Re-tagging...'), backgroundColor: AppColors.info));
+      }
+
+      int tagged = 0;
+      for (int i = 0; i < allDocs.length; i++) {
+        final doc = allDocs[i];
+        final url = doc.data()['url'] as String?;
+        if (url == null || !url.startsWith('https://')) continue;
+        setState(() => _autoTagProgress = i + 1);
+        try {
+          final result = await InsightFaceService.detectAndRecognize(url);
+          if (result.error != null || result.faces.isEmpty) continue;
+          final childIds = <String>[];
+          int matchedCount = 0;
+          for (final face in result.faces) {
+            if (face.matched && face.childId != null) {
+              matchedCount++;
+              if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+            }
+          }
+          if (childIds.isNotEmpty) {
+            await doc.reference.update({
+              'childIds': childIds,
+              'totalFaces': result.faces.length,
+              'taggedFaces': matchedCount,
+              'tags': [],
+            });
+            tagged++;
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Re-tagged $tagged photo(s)!'), backgroundColor: AppColors.success));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+    }
+    if (mounted) setState(() => _isAutoTagging = false);
+  }
+
   void _exitSelectionMode() => setState(() { _selectionMode = false; _selectedIds.clear(); });
 
   Widget _buildEmpty() => Center(
