@@ -26,7 +26,8 @@ class BottomNavShell extends StatelessWidget {
     } else {
       if (location.contains('/teacher/photos') || location == '/teacher') return 0;
       if (location.contains('/teacher/gallery')) return 1;
-      if (location.contains('/teacher/chat')) return 2;
+      if (location.contains('/teacher/students')) return 2;
+      if (location.contains('/teacher/chat')) return 3;
     }
     return 0;
   }
@@ -53,6 +54,9 @@ class BottomNavShell extends StatelessWidget {
           context.go('/teacher/gallery');
           break;
         case 2:
+          context.go('/teacher/students');
+          break;
+        case 3:
           context.go('/teacher/chat');
           break;
       }
@@ -62,7 +66,7 @@ class BottomNavShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = _getCurrentIndex(context);
-    const tabCount = 3;
+    final tabCount = isParent ? 3 : 4;
 
     return Scaffold(
       body: child,
@@ -119,6 +123,8 @@ class BottomNavShell extends StatelessWidget {
         case 1:
           return Icons.photo_library_outlined;
         case 2:
+          return Icons.people_outline_rounded;
+        case 3:
           return Icons.chat_bubble_outline_rounded;
         default:
           return Icons.dashboard_outlined;
@@ -145,6 +151,8 @@ class BottomNavShell extends StatelessWidget {
         case 1:
           return Icons.photo_library_rounded;
         case 2:
+          return Icons.people_rounded;
+        case 3:
           return Icons.chat_bubble_rounded;
         default:
           return Icons.dashboard_rounded;
@@ -169,9 +177,11 @@ class BottomNavShell extends StatelessWidget {
         case 0:
           return 'Upload';
         case 1:
-          return 'My Gallery';
+          return 'Gallery';
         case 2:
-          return 'Messages';
+          return 'Students';
+        case 3:
+          return 'Chat';
         default:
           return '';
       }
