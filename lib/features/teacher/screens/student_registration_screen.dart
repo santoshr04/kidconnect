@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/registration_provider.dart';
@@ -81,10 +82,32 @@ class _StudentRegistrationScreenState
   Future<void> _pickPhoto(int childIndex, ImageSource source) async {
     final file = await _picker.pickImage(source: source, imageQuality: 85);
     if (file != null) {
+      final compressed = await _compressPhoto(File(file.path));
       ref
           .read(registrationProvider.notifier)
-          .setChildPhoto(childIndex, File(file.path));
+          .setChildPhoto(childIndex, compressed);
     }
+  }
+
+  /// Compresses image to 720px max dimension, WebP format, 70% quality.
+  Future<File> _compressPhoto(File file) async {
+    try {
+      final result = await FlutterImageCompress.compressWithFile(
+        file.absolute.path,
+        minWidth: 720,
+        minHeight: 720,
+        quality: 70,
+        format: CompressFormat.webp,
+      );
+      if (result != null) {
+        final compressedFile = File('${file.path}.webp');
+        await compressedFile.writeAsBytes(result);
+        return compressedFile;
+      }
+    } catch (_) {
+      // Fallback to original file if compression fails
+    }
+    return file;
   }
 
   void _showPhotoSourcePicker(int childIndex) {

@@ -73,6 +73,18 @@ const List<String> sectionOptions = ['A', 'B', 'C', 'D'];
 class RegistrationProvider extends StateNotifier<RegistrationState> {
   RegistrationProvider() : super(RegistrationState(children: [StudentEntry()]));
 
+  /// If set, we're updating an existing parent/child instead of creating new ones.
+  String? _editingParentId;
+  List<String> _editingChildIds = [];
+
+  bool get isEditMode => _editingParentId != null;
+
+  /// Switches to edit mode for an existing family.
+  void setEditMode(String parentId, List<String> childIds) {
+    _editingParentId = parentId;
+    _editingChildIds = childIds;
+  }
+
   void setParentName(String value) {
     state = state.copyWith(parentName: value.trim());
   }
@@ -139,6 +151,8 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
   }
 
   void clearForm() {
+    _editingParentId = null;
+    _editingChildIds = [];
     state = RegistrationState(children: [StudentEntry()]);
   }
 
@@ -147,14 +161,6 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
     if (state.parentName.trim().isEmpty) return 'Parent name is required';
     if (state.mobileNumber.trim().isEmpty) return 'Mobile number is required';
     if (state.mobileNumber.trim().length < 10) return 'Mobile number must be at least 10 digits';
-
-    for (int i = 0; i < state.children.length; i++) {
-      final c = state.children[i];
-      final label = state.children.length > 1 ? 'Child ${i + 1}' : 'Child';
-      if (c.name.trim().isEmpty) return '$label name is required';
-      if (c.photoFile == null) return '$label photo is required';
-    }
-
     return null;
   }
 
@@ -170,53 +176,75 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
     state = state.copyWith(isSubmitting: true, errorMessage: null, isSuccess: false);
 
     try {
-      // 1. Generate a secure random password for the parent account
       final phoneDigits = state.mobileNumber.replaceAll(RegExp(r'\D'), '');
-      final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
-      final email = '$phoneDigits@kidconnect.internal';
-      final password = 'KC@$otp';
 
-      // 2. Create Firebase Auth account
-      final uid = await AuthRepository.createAccount(email, password);
-      if (uid == null) throw Exception('Failed to create Firebase Auth account');
+      if (_editingParentId != null) {
+        // ── EDIT MODE: Update existing records ──
+        final parentId = _editingParentId!;
 
-      // Also set display name on the Firebase Auth user
-      try {
-        final firebaseUser = fb.FirebaseAuth.instance.currentUser;
-        if (firebaseUser != null) {
-          await firebaseUser.updateDisplayName(state.parentName);
+        await FirebaseFirestore.instance.collection('parents').doc(parentId).update({
+          'name': state.parentName,
+          'phone': phoneDigits,
+          'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
+        });
+
+        for (int i = 0; i < state.children.length; i++) {
+          final child = state.children[i];
+          final childId = i < _editingChildIds.length
+              ? _editingChildIds[i]
+              : 'child_${parentId}_$i';
+          await _updateChild(childId, child);
         }
-      } catch (_) {
-        // Non-critical — continue even if display name update fails
+
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        debugPrint('✏️ FAMILY UPDATED');
+        debugPrint('   Parent : ${state.parentName}');
+        debugPrint('   Phone  : $phoneDigits');
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        _editingParentId = null;
+        _editingChildIds = [];
+      } else {
+        // ── CREATE MODE: New family ──
+        final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
+        final email = '$phoneDigits@kidconnect.internal';
+        final password = 'KC@$otp';
+
+        final uid = await AuthRepository.createAccount(email, password);
+        if (uid == null) throw Exception('Failed to create Firebase Auth account');
+
+        try {
+          final firebaseUser = fb.FirebaseAuth.instance.currentUser;
+          if (firebaseUser != null) {
+            await firebaseUser.updateDisplayName(state.parentName);
+          }
+        } catch (_) {}
+
+        await FirebaseFirestore.instance.collection('parents').doc(uid).set({
+          'name': state.parentName,
+          'phone': phoneDigits,
+          'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
+          'email': email,
+          'status': 'pending_completion',
+          'createdBy': fb.FirebaseAuth.instance.currentUser?.uid ?? 'teacher',
+          'createdAt': FieldValue.serverTimestamp(),
+          'role': 'parent',
+        });
+
+        for (int i = 0; i < state.children.length; i++) {
+          final child = state.children[i];
+          await _registerChild(uid, child, i);
+        }
+
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        debugPrint('📱 NEW PARENT REGISTERED');
+        debugPrint('   Name   : ${state.parentName}');
+        debugPrint('   Phone  : $phoneDigits');
+        debugPrint('   Email  : $email');
+        debugPrint('   OTP    : $otp');
+        debugPrint('   Children: ${state.children.length}');
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
-
-      // 3. Save parent to Firestore
-      await FirebaseFirestore.instance.collection('parents').doc(uid).set({
-        'name': state.parentName,
-        'phone': phoneDigits,
-        'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
-        'email': email,
-        'status': 'pending_completion',
-        'createdBy': fb.FirebaseAuth.instance.currentUser?.uid ?? 'teacher',
-        'createdAt': FieldValue.serverTimestamp(),
-        'role': 'parent',
-      });
-
-      // 4. For each child: upload photo, save to Firestore, trigger face enrollment
-      for (int i = 0; i < state.children.length; i++) {
-        final child = state.children[i];
-        await _registerChild(uid, child, i);
-      }
-
-      // 5. Log OTP to console (SMS integration placeholder)
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('📱 NEW PARENT REGISTERED');
-      debugPrint('   Name   : ${state.parentName}');
-      debugPrint('   Phone  : $phoneDigits');
-      debugPrint('   Email  : $email');
-      debugPrint('   OTP    : $otp');
-      debugPrint('   Children: ${state.children.length}');
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       state = state.copyWith(isSubmitting: false, isSuccess: true);
       return true;
@@ -233,7 +261,6 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
     final classId = child.className.toLowerCase();
     final childId = 'child_${parentId}_$index';
 
-    // Upload photo to Firebase Storage
     String? photoUrl;
     if (child.photoFile != null) {
       try {
@@ -247,7 +274,6 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       }
     }
 
-    // Save child to Firestore
     await FirebaseFirestore.instance.collection('children').doc(childId).set({
       'name': child.name,
       'classId': classId,
@@ -260,23 +286,53 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       'enrolledFaceCount': 0,
     });
 
-    // Trigger face enrollment via InsightFace (non-blocking)
     if (child.photoFile != null) {
       try {
         final bytes = await child.photoFile!.readAsBytes();
-        await InsightFaceService.enrollChild(
-          childId: childId,
-          name: child.name,
-          faceBytes: bytes,
-        );
-        // Update face profile status
+        await InsightFaceService.enrollChild(childId: childId, name: child.name, faceBytes: bytes);
         await FirebaseFirestore.instance.collection('children').doc(childId).update({
           'hasFaceProfile': true,
           'enrolledFaceCount': 1,
         });
       } catch (e) {
         debugPrint('⚠️ Face enrollment failed for $childId (non-critical): $e');
-        // Non-critical — parent can re-enroll later
+      }
+    }
+  }
+
+  /// Updates an existing child document in Firestore (edit mode).
+  Future<void> _updateChild(String childId, StudentEntry child) async {
+    final updates = <String, dynamic>{
+      'name': child.name,
+      'classId': child.className.toLowerCase(),
+      'className': child.className,
+      'section': child.section,
+    };
+
+    if (child.photoFile != null) {
+      try {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('children/$childId/enrollment/photo_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putFile(child.photoFile!);
+        updates['photoUrl'] = await ref.getDownloadURL();
+      } catch (e) {
+        debugPrint('⚠️ Failed to upload photo for $childId: $e');
+      }
+    }
+
+    await FirebaseFirestore.instance.collection('children').doc(childId).update(updates);
+
+    if (child.photoFile != null) {
+      try {
+        final bytes = await child.photoFile!.readAsBytes();
+        await InsightFaceService.enrollChild(childId: childId, name: child.name, faceBytes: bytes);
+        await FirebaseFirestore.instance.collection('children').doc(childId).update({
+          'hasFaceProfile': true,
+          'enrolledFaceCount': 1,
+        });
+      } catch (e) {
+        debugPrint('⚠️ Face re-enrollment failed for $childId (non-critical): $e');
       }
     }
   }

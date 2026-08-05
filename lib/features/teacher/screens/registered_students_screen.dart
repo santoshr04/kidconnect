@@ -169,6 +169,7 @@ class RegisteredStudentsScreen extends ConsumerWidget {
           parentAlternatePhone: parentAlternatePhone,
           hasFaceProfile: hasFaceProfile,
           parentInfo: parentInfo,
+          docId: docId,
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -292,23 +293,27 @@ class RegisteredStudentsScreen extends ConsumerWidget {
     required String parentName,
     required String parentPhone,
     required String parentAlternatePhone,
+    required String docId,
     required String childName,
     required String childClass,
     String? childSection,
   }) {
+    final notifier = ref.read(registrationProvider.notifier);
+    // Set edit mode so we UPDATE instead of CREATE
+    notifier.setEditMode(parentId, [docId]);
     // Pre-fill the registration form with existing data
-    ref.read(registrationProvider.notifier).loadExisting(
-          parentName: parentName,
-          mobileNumber: parentPhone,
-          alternateMobile: parentAlternatePhone,
-          children: [
-            {
-              'name': childName,
-              'className': childClass,
-              'section': childSection,
-            },
-          ],
-        );
+    notifier.loadExisting(
+      parentName: parentName,
+      mobileNumber: parentPhone,
+      alternateMobile: parentAlternatePhone,
+      children: [
+        {
+          'name': childName,
+          'className': childClass,
+          'section': childSection,
+        },
+      ],
+    );
   }
 
   void _showStudentDetailSheet(
@@ -324,6 +329,7 @@ class RegisteredStudentsScreen extends ConsumerWidget {
     String? parentAlternatePhone,
     required bool hasFaceProfile,
     required _ParentInfo parentInfo,
+    required String docId,
   }) {
     final displayParentName = parentName ?? parentInfo.label;
     final displayPhone = parentPhone ?? '';
@@ -378,6 +384,7 @@ class RegisteredStudentsScreen extends ConsumerWidget {
                     parentName: displayParentName,
                     parentPhone: displayPhone,
                     parentAlternatePhone: displayAltPhone,
+                    docId: docId,
                     childName: name,
                     childClass: className,
                     childSection: section,
