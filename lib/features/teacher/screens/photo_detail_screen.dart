@@ -40,18 +40,63 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   double _imgWidth = 1, _imgHeight = 1;
   List<ChildOption> _allChildren = [];
   Uint8List? _cachedImageBytes;
+  Set<String> _hiddenChildIds = {};
 
-  @override void initState() { super.initState(); _taggedChildIds = List<String>.from(widget.photo.childIds); _loadChildren(); _loadFaces(); }
+  @override void initState() { super.initState(); _taggedChildIds = List<String>.from(widget.photo.childIds); _loadHiddenIds(); _loadChildren(); _loadFaces(); }
+
+  Future<void> _loadHiddenIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('hidden_child_ids');
+    if (raw != null) {
+      _hiddenChildIds = Set<String>.from(jsonDecode(raw) as List);
+    }
+  }
+
+  Future<void> _saveHiddenIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('hidden_child_ids', jsonEncode(_hiddenChildIds.toList()));
+  }
 
   Future<void> _loadChildren() async {
-    final children = MockData.children.map((c) => ChildOption(id: c.id, name: c.firstName, initials: c.initials)).toList();
+    final children = <ChildOption>[];
+
+    // 1. Mock data
+    for (final c in MockData.children) {
+      if (!_hiddenChildIds.contains(c.id)) {
+        children.add(ChildOption(id: c.id, name: c.firstName, initials: c.initials));
+      }
+    }
+
+    // 2. SharedPreferences custom children
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('custom_children');
     if (raw != null) {
       for (final item in (jsonDecode(raw) as List).cast<Map<String, dynamic>>()) {
-        children.add(ChildOption(id: item['id'] as String, name: item['name'] as String, initials: (item['name'] as String).substring(0, 1).toUpperCase()));
+        final id = item['id'] as String;
+        if (!_hiddenChildIds.contains(id)) {
+          children.add(ChildOption(id: id, name: item['name'] as String, initials: (item['name'] as String).substring(0, 1).toUpperCase()));
+        }
       }
     }
+
+    // 3. Firestore registered children (from student registration)
+    try {
+      final snap = await FirebaseFirestore.instance.collection('children').get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (!_hiddenChildIds.contains(doc.id)) {
+          final name = data['name'] as String? ?? '';
+          if (name.isNotEmpty) {
+            children.add(ChildOption(
+              id: doc.id,
+              name: name,
+              initials: name.isNotEmpty ? name[0].toUpperCase() : '?',
+            ));
+          }
+        }
+      }
+    } catch (_) {}
+
     setState(() => _allChildren = children);
   }
 
@@ -61,6 +106,33 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     final prefs = await SharedPreferences.getInstance();
     final existing = _allChildren.where((c) => c.id.startsWith('custom_')).map((c) => {'id': c.id, 'name': c.name}).toList();
     await prefs.setString('custom_children', jsonEncode(existing));
+  }
+
+  Future<void> _removeChildFromList(ChildOption child, int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Remove "${child.name}"?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text('This child will be hidden from the tagging list but data is preserved.', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            child: Text('Remove', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    _hiddenChildIds.add(child.id);
+    await _saveHiddenIds();
+    setState(() => _allChildren.removeAt(index));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${child.name}" hidden from list'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
+    }
   }
 
   Future<void> _loadFaces() async {
@@ -128,12 +200,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     }
 
     setState(() { _faceCircles = circs; _isDetecting = false; });
-
-    // Do NOT auto-sync to Firestore — wait until teacher handles ALL faces
     _updateGalleryState();
   }
 
-  /// Helpers for face status tracking
   bool get _allFacesHandled =>
       _faceCircles.every((c) => c.matchedChildId != null || c.isNeglected);
 
@@ -173,7 +242,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Done — $_handledCount face(s) handled'),
+          content: Text(' Done  $_handledCount face(s) handled'),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
         ),
@@ -212,16 +281,24 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 ])),
               ]),
               const SizedBox(height: 12),
-              ..._allChildren.map((child) => ListTile(
-                leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(child.initials.isNotEmpty ? child.initials : child.name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
-                title: Text(child.name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-                trailing: _taggedChildIds.contains(child.id) ? const Icon(Icons.check_circle, color: AppColors.success, size: 20) : null,
-                onTap: () { _tagFace(circle, child.id, child.name); Navigator.pop(ctx); },
-              )),
+              for (int i = 0; i < _allChildren.length; i++)
+                ListTile(
+                  leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(_allChildren[i].initials.isNotEmpty ? _allChildren[i].initials : _allChildren[i].name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
+                  title: Text(_allChildren[i].name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (_taggedChildIds.contains(_allChildren[i].id)) const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _removeChildFromList(_allChildren[i], i),
+                      child: const Icon(Icons.visibility_off_outlined, color: AppColors.textTertiary, size: 18),
+                    ),
+                  ]),
+                  onTap: () { _tagFace(circle, _allChildren[i].id, _allChildren[i].name); Navigator.pop(ctx); },
+                ),
               const Divider(height: 24),
               Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(controller: nameController, decoration: InputDecoration(hintText: 'Or type a NEW name...', prefixIcon: const Icon(Icons.person_add_alt_rounded, color: AppColors.accent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none), filled: true, fillColor: AppColors.surfaceVariant),
-              onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
+                  onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(child: TextButton(onPressed: () { final name = nameController.text.trim(); if (name.isNotEmpty) { _addNewName(circle, name); Navigator.pop(ctx); } }, child: const Text('Add & Tag'))),
@@ -273,7 +350,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       } catch (_) {}
     }
 
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $childName tagged & enrolled!'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(' $childName tagged & enrolled!'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
   }
 
   @override Widget build(BuildContext context) {
@@ -285,7 +362,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
         title: Text(alreadyTagged ? 'Tagged Kids' : 'Tag Faces', style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700)),
         actions: [_faceCircles.isNotEmpty ? Center(child: Padding(padding: const EdgeInsets.only(right: 16), child: Text('$_handledCount/${_faceCircles.length} handled', style: GoogleFonts.nunito(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)))) : const SizedBox.shrink()]),
       body: Column(children: [
-        if (_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.white, child: const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text('🤖 AI detecting & recognizing faces...')])),
+        if (_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.white, child: const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text(' AI detecting & recognizing faces...')])),
         if (_faceError != null && !_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.amber.shade50, child: Row(children: [const Icon(Icons.info_outline, color: Colors.amber, size: 18), const SizedBox(width: 8), Expanded(child: Text(_faceError!, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600)))])),
         Expanded(child: Container(color: Colors.black, child: LayoutBuilder(builder: (ctx, c) {
           final cw = c.maxWidth, ch = c.maxHeight; double dw, dh, ox, oy;
@@ -306,9 +383,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
               : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   if (_faceCircles.isNotEmpty) ...[
                     Row(children: [
-                      Text('🤖 Face Status', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      Text(' Face Status', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
                       const Spacer(),
-                      Text('$_handledCount tagged · $_neglectedCount neglected · $_remainingCount left', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                      Text('$_handledCount tagged   $_neglectedCount neglected   $_remainingCount left', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
                     ]),
                     const SizedBox(height: 10),
                     Row(children: [const _LegendDot(color: AppColors.success, label: 'Tagged'), const SizedBox(width: 12), const _LegendDot(color: AppColors.textTertiary, label: 'Neglected'), const SizedBox(width: 12), const _LegendDot(color: Colors.blue, label: 'Needs action')]),
@@ -317,7 +394,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                   if (_faceCircles.isEmpty) Text('Tag Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
                   const SizedBox(height: 8),
                   if (_allFacesHandled && _faceCircles.isNotEmpty)
-                    SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(onPressed: _doneTagging, icon: const Icon(Icons.check_circle, size: 20), label: Text('✅ Done — $_handledCount kid(s)', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white))),
+                    SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(onPressed: _doneTagging, icon: const Icon(Icons.check_circle, size: 20), label: Text(' Done  $_handledCount kid(s)', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white))),
                   if (!_allFacesHandled && _faceCircles.isNotEmpty) ...[
                     SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(onPressed: _showManualTagDialog, icon: const Icon(Icons.person_add_alt_rounded, size: 20), label: Text('Tag Kids Manually', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)), style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary))),
                     const SizedBox(height: 8),
@@ -325,7 +402,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                       child: TextButton.icon(
                         onPressed: _neglectAllRemaining,
                         icon: const Icon(Icons.do_not_disturb_alt_outlined, size: 18, color: Colors.grey),
-                        label: Text('🚫 Neglect All Remaining ($_remainingCount)', style: GoogleFonts.nunito(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
+                        label: Text(' Neglect All Remaining ($_remainingCount)', style: GoogleFonts.nunito(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
                         style: TextButton.styleFrom(foregroundColor: Colors.grey),
                       ),
                     ),
@@ -341,7 +418,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   Widget _buildTaggedInfo() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Text('✅ Tagged Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+      Text(' Tagged Kids', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
       const SizedBox(height: 10),
       Wrap(spacing: 8, runSpacing: 6,
         children: widget.photo.aiDetections.map((d) {

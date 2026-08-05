@@ -196,7 +196,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
         backgroundColor: AppColors.background, elevation: 0,
         leading: _selectionMode ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode) : null,
         actions: [
-          if (!_selectionMode)
+          if (!_selectionMode) ...[
             IconButton(
               icon: _isAutoTagging
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
@@ -204,6 +204,12 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
               tooltip: 'Auto-Tag All',
               onPressed: _isAutoTagging ? null : _autoTagAll,
             ),
+            IconButton(
+              icon: const Icon(Icons.refresh, color: AppColors.secondary),
+              tooltip: 'Re-tag All Photos',
+              onPressed: _reTagAll,
+            ),
+          ],
           if (_selectionMode)
             IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.error), onPressed: _selectedIds.isEmpty ? null : _deleteSelected)
           else
