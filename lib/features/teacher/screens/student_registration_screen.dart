@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/registration_provider.dart';
@@ -18,8 +15,6 @@ class StudentRegistrationScreen extends ConsumerStatefulWidget {
 
 class _StudentRegistrationScreenState
     extends ConsumerState<StudentRegistrationScreen> {
-  final _picker = ImagePicker();
-
   // Controllers — created once, survive rebuilds
   final _parentNameCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
@@ -76,85 +71,6 @@ class _StudentRegistrationScreenState
     for (final entry in _childNameCtrls.entries) {
       notifier.setChildName(entry.key, entry.value.text);
     }
-  }
-
-  // ── Photo Picker ──────────────────────────────────────────
-  Future<void> _pickPhoto(int childIndex, ImageSource source) async {
-    final file = await _picker.pickImage(source: source, imageQuality: 85);
-    if (file != null) {
-      final compressed = await _compressPhoto(File(file.path));
-      ref
-          .read(registrationProvider.notifier)
-          .setChildPhoto(childIndex, compressed);
-    }
-  }
-
-  /// Compresses image to 720px max dimension, WebP format, 70% quality.
-  Future<File> _compressPhoto(File file) async {
-    try {
-      final result = await FlutterImageCompress.compressWithFile(
-        file.absolute.path,
-        minWidth: 720,
-        minHeight: 720,
-        quality: 70,
-        format: CompressFormat.webp,
-      );
-      if (result != null) {
-        final compressedFile = File('${file.path}.webp');
-        await compressedFile.writeAsBytes(result);
-        return compressedFile;
-      }
-    } catch (_) {
-      // Fallback to original file if compression fails
-    }
-    return file;
-  }
-
-  void _showPhotoSourcePicker(int childIndex) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Student Photo',
-                  style: GoogleFonts.nunito(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: AppColors.infoLight,
-                  child: Icon(Icons.camera_alt, color: AppColors.info),
-                ),
-                title: Text('Capture from Camera',
-                    style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickPhoto(childIndex, ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: AppColors.successLight,
-                  child: Icon(Icons.photo_library, color: AppColors.success),
-                ),
-                title: Text('Upload from Gallery',
-                    style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickPhoto(childIndex, ImageSource.gallery);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ── Class Dropdown ────────────────────────────────────────
@@ -231,62 +147,6 @@ class _StudentRegistrationScreenState
                 .setChildSection(childIndex, val);
           },
         ),
-      ),
-    );
-  }
-
-  // ── Photo Picker Widget ───────────────────────────────────
-  Widget _buildPhotoPicker(int childIndex, File? photoFile) {
-    return GestureDetector(
-      onTap: () => _showPhotoSourcePicker(childIndex),
-      child: Container(
-        height: 100,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: photoFile != null ? AppColors.success : AppColors.border,
-            width: photoFile != null ? 2 : 1,
-          ),
-        ),
-        child: photoFile != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(photoFile, fit: BoxFit.cover),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: const BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.check, color: Colors.white, size: 16),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_a_photo_outlined,
-                      size: 32,
-                      color: AppColors.textTertiary.withValues(alpha: 0.6)),
-                  const SizedBox(height: 6),
-                  Text('Tap to add photo',
-                      style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          color: AppColors.textTertiary,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
       ),
     );
   }
@@ -402,14 +262,6 @@ class _StudentRegistrationScreenState
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Text('Student Photo *',
-                style: GoogleFonts.nunito(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary)),
-            const SizedBox(height: 6),
-            _buildPhotoPicker(index, child.photoFile),
           ],
         ),
       ),
