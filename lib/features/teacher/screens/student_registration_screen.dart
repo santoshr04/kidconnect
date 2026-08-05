@@ -19,9 +19,62 @@ class _StudentRegistrationScreenState
     extends ConsumerState<StudentRegistrationScreen> {
   final _picker = ImagePicker();
 
+  // Controllers — created once, survive rebuilds
+  final _parentNameCtrl = TextEditingController();
+  final _mobileCtrl = TextEditingController();
+  final _altMobileCtrl = TextEditingController();
+  final Map<int, TextEditingController> _childNameCtrls = {};
+  bool _synced = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sync controllers with provider state on first build
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncFromProvider());
+  }
+
   @override
   void dispose() {
+    _parentNameCtrl.dispose();
+    _mobileCtrl.dispose();
+    _altMobileCtrl.dispose();
+    for (final c in _childNameCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  /// Copies provider state into the text controllers (one-time sync for edit flow).
+  void _syncFromProvider() {
+    if (_synced) return;
+    final state = ref.read(registrationProvider);
+    if (state.parentName.isNotEmpty) _parentNameCtrl.text = state.parentName;
+    if (state.mobileNumber.isNotEmpty) _mobileCtrl.text = state.mobileNumber;
+    if (state.alternateMobile.isNotEmpty) _altMobileCtrl.text = state.alternateMobile;
+    for (int i = 0; i < state.children.length; i++) {
+      final ctrl = _getChildCtrl(i);
+      if (state.children[i].name.isNotEmpty) ctrl.text = state.children[i].name;
+    }
+    _synced = true;
+  }
+
+  TextEditingController _getChildCtrl(int index) {
+    if (!_childNameCtrls.containsKey(index)) {
+      final state = ref.read(registrationProvider);
+      final initial = index < state.children.length ? state.children[index].name : '';
+      _childNameCtrls[index] = TextEditingController(text: initial);
+    }
+    return _childNameCtrls[index]!;
+  }
+
+  void _syncToProvider() {
+    final notifier = ref.read(registrationProvider.notifier);
+    notifier.setParentName(_parentNameCtrl.text);
+    notifier.setMobileNumber(_mobileCtrl.text);
+    notifier.setAlternateMobile(_altMobileCtrl.text);
+    for (final entry in _childNameCtrls.entries) {
+      notifier.setChildName(entry.key, entry.value.text);
+    }
   }
 
   // ── Photo Picker ──────────────────────────────────────────
@@ -170,9 +223,7 @@ class _StudentRegistrationScreenState
           color: AppColors.surfaceVariant,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: photoFile != null
-                ? AppColors.success
-                : AppColors.border,
+            color: photoFile != null ? AppColors.success : AppColors.border,
             width: photoFile != null ? 2 : 1,
           ),
         ),
@@ -221,6 +272,7 @@ class _StudentRegistrationScreenState
   Widget _buildChildCard(int index, StudentEntry child) {
     final state = ref.watch(registrationProvider);
     final label = state.children.length > 1 ? 'Child ${index + 1}' : 'Student';
+    final nameCtrl = _getChildCtrl(index);
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -234,7 +286,6 @@ class _StudentRegistrationScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Container(
@@ -267,8 +318,6 @@ class _StudentRegistrationScreenState
               ],
             ),
             const SizedBox(height: 16),
-
-            // Student Name
             Text('Student Name *',
                 style: GoogleFonts.nunito(
                     fontSize: 13,
@@ -276,9 +325,7 @@ class _StudentRegistrationScreenState
                     color: AppColors.textSecondary)),
             const SizedBox(height: 6),
             TextField(
-              onChanged: (val) => ref
-                  .read(registrationProvider.notifier)
-                  .setChildName(index, val),
+              controller: nameCtrl,
               decoration: InputDecoration(
                 hintText: 'Enter student name',
                 hintStyle: GoogleFonts.nunito(
@@ -295,8 +342,6 @@ class _StudentRegistrationScreenState
               ),
             ),
             const SizedBox(height: 14),
-
-            // Class + Section Row
             Row(
               children: [
                 Expanded(
@@ -335,8 +380,6 @@ class _StudentRegistrationScreenState
               ],
             ),
             const SizedBox(height: 14),
-
-            // Photo Picker
             Text('Student Photo *',
                 style: GoogleFonts.nunito(
                     fontSize: 13,
@@ -365,7 +408,6 @@ class _StudentRegistrationScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Container(
@@ -385,8 +427,6 @@ class _StudentRegistrationScreenState
               ],
             ),
             const SizedBox(height: 16),
-
-            // Parent Name
             Text('Parent/Guardian Name *',
                 style: GoogleFonts.nunito(
                     fontSize: 13,
@@ -394,8 +434,7 @@ class _StudentRegistrationScreenState
                     color: AppColors.textSecondary)),
             const SizedBox(height: 6),
             TextField(
-              onChanged: (val) =>
-                  ref.read(registrationProvider.notifier).setParentName(val),
+              controller: _parentNameCtrl,
               decoration: InputDecoration(
                 hintText: 'Enter parent full name',
                 hintStyle: GoogleFonts.nunito(
@@ -412,8 +451,6 @@ class _StudentRegistrationScreenState
               ),
             ),
             const SizedBox(height: 14),
-
-            // Mobile Number
             Text('Mobile Number *',
                 style: GoogleFonts.nunito(
                     fontSize: 13,
@@ -421,8 +458,7 @@ class _StudentRegistrationScreenState
                     color: AppColors.textSecondary)),
             const SizedBox(height: 6),
             TextField(
-              onChanged: (val) =>
-                  ref.read(registrationProvider.notifier).setMobileNumber(val),
+              controller: _mobileCtrl,
               keyboardType: TextInputType.phone,
               maxLength: 10,
               decoration: InputDecoration(
@@ -447,8 +483,6 @@ class _StudentRegistrationScreenState
               ),
             ),
             const SizedBox(height: 14),
-
-            // Alternate Mobile
             Text('Alternate Mobile Number (Optional)',
                 style: GoogleFonts.nunito(
                     fontSize: 13,
@@ -456,9 +490,7 @@ class _StudentRegistrationScreenState
                     color: AppColors.textSecondary)),
             const SizedBox(height: 6),
             TextField(
-              onChanged: (val) => ref
-                  .read(registrationProvider.notifier)
-                  .setAlternateMobile(val),
+              controller: _altMobileCtrl,
               keyboardType: TextInputType.phone,
               maxLength: 10,
               decoration: InputDecoration(
@@ -489,13 +521,23 @@ class _StudentRegistrationScreenState
   }
 
   Future<void> _handleRegister() async {
+    _syncToProvider(); // Sync controllers → provider before validate/register
     final notifier = ref.read(registrationProvider.notifier);
     final success = await notifier.register();
 
     if (!mounted) return;
 
     if (success) {
-      // Show success dialog
+      // Reset controllers for fresh form
+      _parentNameCtrl.clear();
+      _mobileCtrl.clear();
+      _altMobileCtrl.clear();
+      for (final c in _childNameCtrls.values) {
+        c.clear();
+      }
+      _childNameCtrls.clear();
+      _synced = false;
+
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -549,20 +591,20 @@ class _StudentRegistrationScreenState
         ),
       );
     } else {
-      // Show error
       final errorMsg =
           ref.read(registrationProvider).errorMessage ?? 'Registration failed';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(registrationProvider);
@@ -605,7 +647,6 @@ class _StudentRegistrationScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Page subtitle
                         Text(
                             'Register a new family in under 30 seconds.\nParents will complete their profile later.',
                             style: GoogleFonts.nunito(
@@ -613,11 +654,7 @@ class _StudentRegistrationScreenState
                                 color: AppColors.textSecondary,
                                 fontWeight: FontWeight.w500)),
                         const SizedBox(height: 20),
-
-                        // Parent Info Card
                         _buildParentCard(state),
-
-                        // Student Info Section Header
                         Row(
                           children: [
                             Container(
@@ -639,12 +676,8 @@ class _StudentRegistrationScreenState
                           ],
                         ),
                         const SizedBox(height: 16),
-
-                        // Child Cards
                         for (int i = 0; i < state.children.length; i++)
                           _buildChildCard(i, state.children[i]),
-
-                        // Add Another Child Button
                         GestureDetector(
                           onTap: () =>
                               ref.read(registrationProvider.notifier).addChild(),
@@ -663,8 +696,7 @@ class _StudentRegistrationScreenState
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.add_circle_outline,
-                                    color: AppColors.accent,
-                                    size: 22),
+                                    color: AppColors.accent, size: 22),
                                 const SizedBox(width: 8),
                                 Text('Add Another Child',
                                     style: GoogleFonts.nunito(
@@ -679,8 +711,6 @@ class _StudentRegistrationScreenState
                     ),
                   ),
                 ),
-
-                // Bottom Action Bar
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -700,20 +730,26 @@ class _StudentRegistrationScreenState
                         child: SizedBox(
                           height: 50,
                           child: OutlinedButton(
-                            onPressed: () => ref
-                                .read(registrationProvider.notifier)
-                                .clearForm(),
+                            onPressed: () {
+                              _parentNameCtrl.clear();
+                              _mobileCtrl.clear();
+                              _altMobileCtrl.clear();
+                              for (final c in _childNameCtrls.values) {
+                                c.clear();
+                              }
+                              _childNameCtrls.clear();
+                              _synced = false;
+                              ref.read(registrationProvider.notifier).clearForm();
+                            },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.textSecondary,
-                              side: const BorderSide(
-                                  color: AppColors.border),
+                              side: const BorderSide(color: AppColors.border),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
                             ),
                             child: Text('Clear Form',
                                 style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15)),
+                                    fontWeight: FontWeight.w700, fontSize: 15)),
                           ),
                         ),
                       ),
@@ -724,12 +760,10 @@ class _StudentRegistrationScreenState
                           height: 50,
                           child: ElevatedButton.icon(
                             onPressed: _handleRegister,
-                            icon: const Icon(Icons.check_circle_outline,
-                                size: 20),
+                            icon: const Icon(Icons.check_circle_outline, size: 20),
                             label: Text('Register Student',
                                 style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15)),
+                                    fontWeight: FontWeight.w800, fontSize: 15)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
