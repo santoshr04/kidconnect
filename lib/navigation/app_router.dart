@@ -147,6 +147,19 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: ParentProfileScreen(),
             ),
           ),
+          GoRoute(
+            path: '/parent/profile',
+            pageBuilder: (context, state) => CustomTransitionPage(
+              child: const ParentProfileScreen(isViewMode: true),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return SlideTransition(
+                  position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                      .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                  child: child,
+                );
+              },
+            ),
+          ),
         ],
       ),
 

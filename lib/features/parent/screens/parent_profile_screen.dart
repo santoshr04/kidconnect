@@ -7,7 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 
 class ParentProfileScreen extends ConsumerStatefulWidget {
-  const ParentProfileScreen({super.key});
+  final bool isViewMode;
+  const ParentProfileScreen({super.key, this.isViewMode = false});
 
   @override
   ConsumerState<ParentProfileScreen> createState() => _ParentProfileScreenState();
@@ -25,6 +26,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   final _emergencyCtrl = TextEditingController();
   String? _bloodGroup;
   bool _saving = false;
+  bool _editing = false;
   Map<String, dynamic>? _parentData;
   List<Map<String, dynamic>> _children = [];
 
@@ -146,6 +148,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   Widget build(BuildContext context) {
     final parentName = _parentData?['name'] ?? '';
     final phone = _parentData?['phone'] ?? '';
+    final isView = widget.isViewMode && !_editing;
 
     if (_parentData == null) {
       return Scaffold(
@@ -157,15 +160,32 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Complete Your Profile',
+        title: Text(
+            isView ? 'My Profile' : 'Complete Your Profile',
             style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background,
         elevation: 0,
+        leading: widget.isViewMode
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+                onPressed: () => context.pop(),
+              )
+            : null,
         actions: [
-          TextButton(
-            onPressed: () => context.go('/parent/gallery'),
-            child: Text('Skip', style: GoogleFonts.nunito(fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
-          ),
+          if (!widget.isViewMode)
+            TextButton(
+              onPressed: () => context.go('/parent/gallery'),
+              child: Text('Skip',
+                  style: GoogleFonts.nunito(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textTertiary)),
+            ),
+          if (isView)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
+              tooltip: 'Edit Profile',
+              onPressed: () => setState(() => _editing = true),
+            ),
         ],
       ),
       body: Form(
@@ -175,53 +195,127 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Teacher-entered (read-only) ──
+              // ── Teacher-entered (always read-only) ──
               _buildReadOnlySection(parentName, phone),
               const SizedBox(height: 24),
-              // ── Parent to complete ──
-              Text('Complete the remaining details',
-                  style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w800)),
+              // ── Parent details ──
+              Text(
+                  isView ? 'Your Details' : 'Complete the remaining details',
+                  style: GoogleFonts.nunito(
+                      fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 16),
-              _buildTextField('Email Address *', _emailCtrl, TextInputType.emailAddress, 'Enter your email'),
-              const SizedBox(height: 14),
-              _buildTextField('Father\'s Name', _fatherNameCtrl, TextInputType.name, 'Father\'s full name'),
-              const SizedBox(height: 14),
-              _buildTextField('Mother\'s Name', _motherNameCtrl, TextInputType.name, 'Mother\'s full name'),
-              const SizedBox(height: 14),
-              _buildTextField('Residential Address', _addressCtrl, TextInputType.streetAddress, 'Your address'),
-              const SizedBox(height: 14),
-              _buildBloodGroupDropdown(),
-              const SizedBox(height: 14),
-              _buildTextField('Allergies', _allergiesCtrl, TextInputType.text, 'Any known allergies'),
-              const SizedBox(height: 14),
-              _buildTextField('Medical Information', _medicalCtrl, TextInputType.text, 'Medical conditions, medications'),
-              const SizedBox(height: 14),
-              _buildTextField('Emergency Contact', _emergencyCtrl, TextInputType.phone, 'Emergency contact number'),
-              const SizedBox(height: 32),
-
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline, size: 22),
-                  label: Text(_saving ? 'Saving...' : 'Save & Continue',
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 16)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 2,
+              isView
+                  ? _buildViewOnlyFields()
+                  : _buildEditableFields(),
+              if (!isView) ...[
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _saving ? null : _save,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check_circle_outline, size: 22),
+                    label: Text(
+                        _saving ? 'Saving...' : 'Save & Continue',
+                        style: GoogleFonts.nunito(
+                            fontWeight: FontWeight.w800, fontSize: 16)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 2,
+                    ),
                   ),
                 ),
-              ),
+              ],
+              if (isView) ...[
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.close, size: 20),
+                    label: Text('Close',
+                        style: GoogleFonts.nunito(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textSecondary,
+                      side: const BorderSide(color: AppColors.border),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildViewOnlyFields() {
+    return Column(children: [
+      _viewOnlyRow('Email', _emailCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Father\'s Name', _fatherNameCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Mother\'s Name', _motherNameCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Address', _addressCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Blood Group', _bloodGroupCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Allergies', _allergiesCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Medical Info', _medicalCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Emergency Contact', _emergencyCtrl.text),
+    ]);
+  }
+
+  Widget _viewOnlyRow(String label, String value) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+          width: 130,
+          child: Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary))),
+      Expanded(
+          child: Text(value.isNotEmpty ? value : '—',
+              style: GoogleFonts.nunito(
+                  fontSize: 14, fontWeight: FontWeight.w700))),
+    ]);
+  }
+
+  Widget _buildEditableFields() {
+    return Column(children: [
+      _buildTextField('Email Address *', _emailCtrl, TextInputType.emailAddress, 'Enter your email'),
+      const SizedBox(height: 14),
+      _buildTextField('Father\'s Name', _fatherNameCtrl, TextInputType.name, 'Father\'s full name'),
+      const SizedBox(height: 14),
+      _buildTextField('Mother\'s Name', _motherNameCtrl, TextInputType.name, 'Mother\'s full name'),
+      const SizedBox(height: 14),
+      _buildTextField('Residential Address', _addressCtrl, TextInputType.streetAddress, 'Your address'),
+      const SizedBox(height: 14),
+      _buildBloodGroupDropdown(),
+      const SizedBox(height: 14),
+      _buildTextField('Allergies', _allergiesCtrl, TextInputType.text, 'Any known allergies'),
+      const SizedBox(height: 14),
+      _buildTextField('Medical Information', _medicalCtrl, TextInputType.text, 'Medical conditions, medications'),
+      const SizedBox(height: 14),
+      _buildTextField('Emergency Contact', _emergencyCtrl, TextInputType.phone, 'Emergency contact number'),
+    ]);
   }
 
   Widget _buildReadOnlySection(String parentName, String phone) {

@@ -110,6 +110,11 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
                     padding: EdgeInsets.zero,
                   ),
                 ),
+              IconButton(
+                icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
+                tooltip: 'Profile',
+                onPressed: () => context.push('/parent/profile'),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: AvatarWidget(name: auth.currentUser?.name ?? 'User', size: 36),
