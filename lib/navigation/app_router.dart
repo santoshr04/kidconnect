@@ -9,12 +9,14 @@ import '../features/auth/screens/parent_phone_login_screen.dart';
 import '../features/parent/screens/gallery_screen.dart';
 import '../features/parent/screens/parent_photo_viewer_screen.dart';
 import '../features/parent/screens/face_enrollment_screen.dart';
+import '../features/parent/screens/parent_profile_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
 import '../features/teacher/screens/teacher_gallery_screen.dart';
 import '../features/teacher/screens/photo_detail_screen.dart';
 import '../features/teacher/screens/student_registration_screen.dart';
 import '../features/teacher/screens/registered_students_screen.dart';
 import '../features/messaging/screens/chat_screen.dart';
+import '../data/models/user_model.dart';
 import '../data/models/photo_model.dart';
 import 'bottom_nav_shell.dart';
 
@@ -37,7 +39,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       if (isAuthenticated && (isLoginRoute || isParentLoginRoute)) {
-        return authState.isParent ? '/parent' : '/teacher';
+        if (authState.isParent) {
+          // Check if parent needs to complete profile
+          final status = authState.currentUser?.status;
+          if (status == ParentStatus.pendingCompletion) {
+            return '/parent/complete-profile';
+          }
+          return '/parent';
+        }
+        return '/teacher';
       }
 
       return null;
@@ -129,6 +139,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/parent/face-setup',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: FaceEnrollmentScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/parent/complete-profile',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ParentProfileScreen(),
             ),
           ),
         ],

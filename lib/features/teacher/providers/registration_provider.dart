@@ -3,8 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb;
-import '../../../data/repositories/auth_repository.dart';
 import '../../../core/services/insight_face_service.dart';
 
 /// Represents a single child entry in the registration form.
@@ -165,7 +163,8 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
   }
 
   /// Registers the parent and all children.
-  /// Returns true on success, false on failure (with errorMessage set).
+  /// Firebase Auth account is NOT created here — it's created when the parent first logs in.
+  /// This avoids "Failed to create Firebase Auth account" errors during teacher registration.
   Future<bool> register() async {
     final error = validate();
     if (error != null) {
@@ -177,6 +176,7 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
 
     try {
       final phoneDigits = state.mobileNumber.replaceAll(RegExp(r'\D'), '');
+      final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
 
       if (_editingParentId != null) {
         // ── EDIT MODE: Update existing records ──
@@ -205,28 +205,17 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
         _editingParentId = null;
         _editingChildIds = [];
       } else {
-        // ── CREATE MODE: New family ──
-        final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
-        final email = '$phoneDigits@kidconnect.internal';
-        final password = 'KC@$otp';
-
-        final uid = await AuthRepository.createAccount(email, password);
-        if (uid == null) throw Exception('Failed to create Firebase Auth account');
-
-        try {
-          final firebaseUser = fb.FirebaseAuth.instance.currentUser;
-          if (firebaseUser != null) {
-            await firebaseUser.updateDisplayName(state.parentName);
-          }
-        } catch (_) {}
+        // ── CREATE MODE: New family — Firestore only ──
+        final uid = 'parent_${DateTime.now().millisecondsSinceEpoch}';
 
         await FirebaseFirestore.instance.collection('parents').doc(uid).set({
           'name': state.parentName,
           'phone': phoneDigits,
           'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
-          'email': email,
+          'email': '$phoneDigits@kidconnect.internal',
+          'otp': otp,
           'status': 'pending_completion',
-          'createdBy': fb.FirebaseAuth.instance.currentUser?.uid ?? 'teacher',
+          'createdBy': 'teacher',
           'createdAt': FieldValue.serverTimestamp(),
           'role': 'parent',
         });
@@ -238,11 +227,12 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
 
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         debugPrint('📱 NEW PARENT REGISTERED');
+        debugPrint('   ID     : $uid');
         debugPrint('   Name   : ${state.parentName}');
         debugPrint('   Phone  : $phoneDigits');
-        debugPrint('   Email  : $email');
         debugPrint('   OTP    : $otp');
         debugPrint('   Children: ${state.children.length}');
+        debugPrint('   (Auth account will be created on first login)');
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
 

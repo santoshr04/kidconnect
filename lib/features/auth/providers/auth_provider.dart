@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/mock/mock_data.dart';
 import '../../../data/repositories/auth_repository.dart';
@@ -113,22 +114,74 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> loginParentByPhone(String phone) async {
     state = state.copyWith(isLoading: true);
 
-    // First try to match the phone, get the parent email, then Firebase Auth
-    final parent = MockData.getParentByPhone(phone);
+    // 1) Try Firestore — look up parent by phone
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('parents')
+          .where('phone', isEqualTo: phone)
+          .limit(1)
+          .get();
 
+      if (snap.docs.isNotEmpty) {
+        final data = snap.docs.first.data();
+        final email = data['email'] as String? ?? '$phone@kidconnect.internal';
+
+        // OTP from stored document, or fallback to computed
+        final storedOtp = data['otp'] as String?;
+        final otp = storedOtp ?? (100000 + (phone.hashCode % 900000)).toString();
+        final password = 'KC@$otp';
+
+        // Try to sign in first (existing account), if that fails try to create
+        UserModel? firebaseUser;
+        firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
+
+        if (firebaseUser == null) {
+          // Account doesn't exist yet — create it (first login)
+          final uid = await AuthRepository.createAccount(email, password);
+          if (uid != null) {
+            // Sign in with the newly created account
+            firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
+          }
+        }
+
+        if (firebaseUser != null) {
+          final userModel = UserModel(
+            id: snap.docs.first.id,
+            name: data['name'] as String? ?? 'Parent',
+            email: email,
+            role: UserRole.parent,
+            phone: phone,
+            status: data['status'] == 'active' ? ParentStatus.active : ParentStatus.pendingCompletion,
+            createdAt: DateTime.now(),
+          );
+
+          state = AuthState(
+            currentUser: userModel,
+            isAuthenticated: true,
+            isLoading: false,
+            selectedChildId: snap.docs.first.id,
+            usingMockData: false,
+          );
+          return true;
+        }
+      }
+    } catch (_) {
+      // Firestore lookup failed — fall through to mock
+    }
+
+    // 2) Fall back to mock data
+    final parent = MockData.getParentByPhone(phone);
     if (parent == null) {
       state = state.copyWith(isLoading: false);
       return false;
     }
 
-    // Try Firebase Auth with parent credentials
     final firebaseUser = await AuthRepository.signInWithEmail(
       parent.email,
       'password123',
       UserRole.parent,
     );
 
-    // Look up children using mock parent ID (Firebase UID won't match mock IDs)
     final children = MockData.getChildrenForParent(parent.id);
     final defaultChildId = children.isNotEmpty ? children.first.id : null;
 
@@ -143,9 +196,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return true;
     }
 
-    // Firebase Auth failed, fall back to mock (Firestore won't work)
     await Future.delayed(const Duration(milliseconds: 800));
-
     state = AuthState(
       currentUser: parent,
       isAuthenticated: true,
