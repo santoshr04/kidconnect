@@ -4,7 +4,6 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/photo_model.dart';
-import '../../../data/mock/mock_data.dart';
 import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
 
@@ -254,23 +253,7 @@ final uploadStateProvider =
 });
 
 final allTeacherPhotosProvider = Provider<List<PhotoModel>>((ref) {
-  final uploaded = ref.watch(teacherPhotoStateProvider).uploadedPhotos;
-  final mockData = MockData.photos;
-
-  final seen = <String>{};
-  final merged = <PhotoModel>[];
-
-  // Session uploads first (includes pending)
-  for (final photo in uploaded) {
-    if (seen.add(photo.id)) merged.add(photo);
-  }
-
-  // Mock data as fallback (so gallery always has content)
-  for (final photo in mockData) {
-    if (seen.add(photo.id)) merged.add(photo);
-  }
-
-  return merged;
+  return ref.watch(teacherPhotoStateProvider).uploadedPhotos;
 });
 
 /// Firestore-sourced photos (real uploaded photos from Firebase).
@@ -289,6 +272,7 @@ bool isPhotoPending(PhotoModel photo) => photo.tags.contains('__pending__');
 
 /// Auto-tag a single photo: runs InsightFace detection + recognition,
 /// then updates Firestore with recognized childIds.
+/// Only accepts child IDs that are registered in Firestore.
 /// Non-blocking background auto-tag for a batch of uploaded photos.
 void _autoTagBatch(List<Map<String, String>> photos) {
   for (final photo in photos) {
@@ -306,24 +290,35 @@ Future<void> _autoTagPhotoAsync(String photoId, String photoUrl) async {
     final result = await InsightFaceService.detectAndRecognize(photoUrl);
     if (result.error != null || result.faces.isEmpty) return;
 
+    // Fetch valid child IDs from Firestore — only accept registered children
+    final validIds = <String>{};
+    try {
+      final childrenSnap =
+          await FirebaseFirestore.instance.collection('children').get();
+      for (final doc in childrenSnap.docs) {
+        validIds.add(doc.id);
+      }
+    } catch (_) {}
+
     final totalFaces = result.faces.length;
     final childIds = <String>[];
     final aiDetections = <Map<String, dynamic>>[];
     int matchedCount = 0;
     for (final face in result.faces) {
-      if (face.matched && face.childId != null) {
+      final matchedId = face.childId;
+      final isValid = matchedId != null && validIds.contains(matchedId);
+      if (face.matched && isValid) {
         matchedCount++;
-        if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+        if (!childIds.contains(matchedId!)) childIds.add(matchedId);
       }
       aiDetections.add({
-        'childId': face.childId ?? '',
+        'childId': isValid ? (matchedId ?? '') : '',
         'confidence': face.confidence ?? 0,
-        'matched': face.matched,
+        'matched': face.matched && isValid,
       });
     }
 
-    // ALWAYS save recognized childIds so parents see photos immediately
-    // even if not all faces are matched yet
+    // Only save if there are valid recognized child IDs
     if (childIds.isNotEmpty) {
       await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
         'childIds': childIds,

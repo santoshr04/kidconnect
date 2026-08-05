@@ -8,7 +8,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
-import '../../../data/mock/mock_data.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
@@ -53,20 +52,18 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-    final childId = auth.selectedChildId ?? 'child_ruthvi';
-    final child = MockData.getChildById(childId);
+    final childId = auth.selectedChildId ?? '';
     final isMock = auth.usingMockData;
-    String childName = child?.firstName ?? 'Ruthvi';
+    String childName = 'Child';
 
-    // Fallback to Firestore for newly registered children not in mock data
-    if (child == null && !isMock) {
-      // Load child name from Firestore in a future
+    // Load child name from Firestore
+    if (!isMock && childId.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         try {
           final doc = await FirebaseFirestore.instance.collection('children').doc(childId).get();
           if (doc.exists && mounted) {
             setState(() {
-              childName = doc.data()?['name']?.toString().split(' ').first ?? 'Ruthvi';
+              childName = doc.data()?['name']?.toString().split(' ').first ?? 'Child';
             });
           }
         } catch (_) {}
@@ -195,8 +192,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
         final filtered = filterByChild && childId != null
             ? photos.where((p) => p.childIds.contains(childId)).toList()
             : photos;
-        final displayList = filtered.isNotEmpty ? filtered : MockData.photos;
-        if (displayList.isEmpty) {
+        if (filtered.isEmpty) {
           return Center(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               const Text('📸', style: TextStyle(fontSize: 48)),
@@ -207,14 +203,16 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
             ]),
           );
         }
-        return _PhotoGrid(photos: displayList);
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) {
-        final filtered = filterByChild && childId != null
-            ? MockData.getPhotosForChild(childId) : MockData.photos;
         return _PhotoGrid(photos: filtered);
       },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.cloud_off, color: AppColors.textTertiary, size: 48),
+          const SizedBox(height: 12),
+          Text('Could not load photos', style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        ]),
+      ),
     );
   }
 }

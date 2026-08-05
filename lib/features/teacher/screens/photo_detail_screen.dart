@@ -11,7 +11,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
-import '../../../data/mock/mock_data.dart';
 import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
 import '../../auth/providers/auth_provider.dart';

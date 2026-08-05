@@ -5,8 +5,8 @@ import '../core/theme/app_colors.dart';
 
 /// Bottom navigation shell with role-specific tabs.
 ///
-/// Teacher: Upload | My Gallery | Messages
-/// Parent: Gallery | Messages | Face Setup
+/// Teacher: Upload | My Gallery | Students | Chat
+/// Parent: Photos | Messages | Face Setup
 class BottomNavShell extends StatelessWidget {
   final bool isParent;
   final Widget child;
