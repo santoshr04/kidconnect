@@ -62,26 +62,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   Future<void> _loadChildren() async {
     final children = <ChildOption>[];
 
-    // 1. Mock data
-    for (final c in MockData.children) {
-      if (!_hiddenChildIds.contains(c.id)) {
-        children.add(ChildOption(id: c.id, name: c.firstName, initials: c.initials));
-      }
-    }
-
-    // 2. SharedPreferences custom children
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('custom_children');
-    if (raw != null) {
-      for (final item in (jsonDecode(raw) as List).cast<Map<String, dynamic>>()) {
-        final id = item['id'] as String;
-        if (!_hiddenChildIds.contains(id)) {
-          children.add(ChildOption(id: id, name: item['name'] as String, initials: (item['name'] as String).substring(0, 1).toUpperCase()));
-        }
-      }
-    }
-
-    // 3. Firestore registered children (from student registration)
+    // Only Firestore-registered children
     try {
       final snap = await FirebaseFirestore.instance.collection('children').get();
       for (final doc in snap.docs) {
@@ -256,9 +237,17 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   }
 
   void _showTagPopup(_FaceCircle circle) {
-    final nameController = TextEditingController();
     final existingMatch = circle.matchedChildId != null
         ? '${circle.childName} (${((circle.confidence ?? 1) * 100).toInt()}% match)' : null;
+
+    // One child per face: exclude children already tagged to other faces
+    final otherTaggedIds = _faceCircles
+        .where((c) => c.id != circle.id && c.matchedChildId != null)
+        .map((c) => c.matchedChildId!)
+        .toSet();
+    final availableChildren = _allChildren
+        .where((c) => !otherTaggedIds.contains(c.id))
+        .toList();
 
     showModalBottomSheet(context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -282,32 +271,33 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text('Tag this face', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800)),
                   if (existingMatch != null) Text('AI: $existingMatch', style: GoogleFonts.nunito(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w600)),
+                  if (availableChildren.isEmpty) Text('All registered children are already tagged to other faces',
+                      style: GoogleFonts.nunito(fontSize: 12, color: AppColors.warning, fontWeight: FontWeight.w600)),
                 ])),
               ]),
               const SizedBox(height: 12),
-              for (int i = 0; i < _allChildren.length; i++)
+              for (int i = 0; i < availableChildren.length; i++)
                 ListTile(
-                  leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(_allChildren[i].initials.isNotEmpty ? _allChildren[i].initials : _allChildren[i].name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
-                  title: Text(_allChildren[i].name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (_taggedChildIds.contains(_allChildren[i].id)) const Icon(Icons.check_circle, color: AppColors.success, size: 20),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => _removeChildFromList(_allChildren[i], i),
-                      child: const Icon(Icons.visibility_off_outlined, color: AppColors.textTertiary, size: 18),
-                    ),
-                  ]),
-                  onTap: () { _tagFace(circle, _allChildren[i].id, _allChildren[i].name); Navigator.pop(ctx); },
+                  leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: 0.12), child: Text(availableChildren[i].initials.isNotEmpty ? availableChildren[i].initials : availableChildren[i].name[0].toUpperCase(), style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary))),
+                  title: Text(availableChildren[i].name, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  onTap: () { _tagFace(circle, availableChildren[i].id, availableChildren[i].name); Navigator.pop(ctx); },
                 ),
-              const Divider(height: 24),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(controller: nameController, decoration: InputDecoration(hintText: 'Or type a NEW name...', prefixIcon: const Icon(Icons.person_add_alt_rounded, color: AppColors.accent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none), filled: true, fillColor: AppColors.surfaceVariant),
-                  onSubmitted: (name) { if (name.trim().isNotEmpty) { _addNewName(circle, name.trim()); Navigator.pop(ctx); } })),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: TextButton(onPressed: () { final name = nameController.text.trim(); if (name.isNotEmpty) { _addNewName(circle, name); Navigator.pop(ctx); } }, child: const Text('Add & Tag'))),
-                const SizedBox(width: 8),
-                Expanded(child: TextButton.icon(
+              if (availableChildren.isEmpty && _allChildren.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('All registered children have already been tagged to other faces in this photo.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+                ),
+              const SizedBox(height: 12),
+              if (availableChildren.isNotEmpty || _allChildren.isEmpty) ...[
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: TextButton.icon(
                   onPressed: () {
                     setState(() {
                       circle.isNeglected = true;
@@ -320,9 +310,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                   },
                   icon: const Icon(Icons.do_not_disturb_alt_outlined, size: 18, color: Colors.grey),
                   label: const Text('Neglect Face', style: TextStyle(color: Colors.grey)),
-                )),
-              ]),
-              const SizedBox(height: 24),
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),

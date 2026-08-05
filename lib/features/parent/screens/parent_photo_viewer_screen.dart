@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
@@ -47,6 +48,70 @@ class _ParentPhotoViewerScreenState
   }
 
   void _toggleOverlay() => setState(() => _showOverlay = !_showOverlay);
+
+  Future<void> _retagCurrentPhoto() async {
+    if (_currentIndex >= widget.photos.length) return;
+    final photo = widget.photos[_currentIndex];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Re-tag Photo?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'This will clear existing tags and re-open the photo for manual tagging. The photo will appear in "Needs Review".',
+            style: GoogleFonts.nunito(
+                fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
+            child: Text('Re-tag',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final isMock = ref.read(authProvider).usingMockData;
+
+    // Clear existing tagging in Firestore so it appears in "Needs Review"
+    if (!isMock) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('photos')
+            .doc(photo.id)
+            .update({
+          'childIds': <String>[],
+          'aiDetections': <Map<String, dynamic>>[],
+          'tags': ['__needs_review__'],
+        });
+      } catch (_) {}
+    }
+
+    // Remove from session state so it re-fetches from Firestore
+    ref.read(teacherPhotoStateProvider.notifier).removePhoto(photo.id);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('🔁 Photo marked for re-tagging — find it in Needs Review'),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   Future<void> _deleteCurrentPhoto() async {
     if (_currentIndex >= widget.photos.length) return;
@@ -191,6 +256,12 @@ class _ParentPhotoViewerScreenState
                           fontSize: 14,
                         ),
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.auto_fix_high,
+                          color: Color(0xFF64B5F6), size: 22),
+                      tooltip: 'Re-tag Photo',
+                      onPressed: _retagCurrentPhoto,
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline,
