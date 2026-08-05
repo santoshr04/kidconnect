@@ -190,6 +190,18 @@ class InsightFaceService {
     }
   }
 
+  /// Delete ALL enrollment data from the backend.
+  static Future<bool> deleteAllEnrollments() async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/delete_all_enrollments'),
+      ).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Recognize multiple face crops in ONE batch request.
   /// [faceBytesList] — list of cropped face images (one per detected face)
   /// Returns list of results in same order.

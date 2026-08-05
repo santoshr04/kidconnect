@@ -12,7 +12,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/mock/mock_data.dart';
+import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/teacher_photo_provider.dart';
 
 const _faceColors = [
@@ -362,7 +364,21 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       appBar: AppBar(backgroundColor: Colors.black, elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white), onPressed: () => context.pop()),
         title: Text(alreadyTagged ? 'Tagged Kids' : 'Tag Faces', style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700)),
-        actions: [_faceCircles.isNotEmpty ? Center(child: Padding(padding: const EdgeInsets.only(right: 16), child: Text('$_handledCount/${_faceCircles.length} handled', style: GoogleFonts.nunito(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)))) : const SizedBox.shrink()]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+            tooltip: 'Delete Photo',
+            onPressed: _deletePhoto,
+          ),
+          if (_faceCircles.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: Text('$_handledCount/${_faceCircles.length} handled',
+                    style: GoogleFonts.nunito(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ),
+        ]),
       body: Column(children: [
         if (_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.white, child: const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text(' AI detecting & recognizing faces...')])),
         if (_faceError != null && !_isDetecting) Container(padding: const EdgeInsets.all(16), color: Colors.amber.shade50, child: Row(children: [const Icon(Icons.info_outline, color: Colors.amber, size: 18), const SizedBox(width: 8), Expanded(child: Text(_faceError!, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600)))])),
@@ -447,6 +463,62 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       }
     });
     _updateGalleryState();
+  }
+
+  Future<void> _deletePhoto() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title:
+            Text('Delete Photo?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'This will permanently remove the photo from storage. This action cannot be undone.',
+            style: GoogleFonts.nunito(
+                fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
+            child: Text('Delete',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final photoId = widget.photo.id;
+    final photoUrl = widget.photo.url;
+    final isMock = ref.read(authProvider).usingMockData;
+
+    // Remove from session state immediately
+    ref.read(teacherPhotoStateProvider.notifier).removePhoto(photoId);
+
+    // Pop back to gallery
+    if (mounted) {
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('🗑️ Photo deleted'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    // Perform actual deletion from Firebase
+    if (!isMock) {
+      await PhotoRepository.deletePhoto(photoId, photoUrl);
+    }
   }
 
   void _showManualTagDialog() {

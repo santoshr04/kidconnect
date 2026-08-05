@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/mock/mock_data.dart';
+import '../../../core/services/insight_face_service.dart';
 import '../providers/registration_provider.dart';
 
 class RegisteredStudentsScreen extends ConsumerWidget {
@@ -25,6 +26,11 @@ class RegisteredStudentsScreen extends ConsumerWidget {
             icon: const Icon(Icons.person_add_alt_rounded, color: AppColors.primary),
             tooltip: 'Register New Student',
             onPressed: () => _navigateToRegister(context, ref),
+          ),
+          IconButton(
+            icon: const Icon(Icons.cleaning_services_outlined, color: AppColors.error),
+            tooltip: 'Reset All Data',
+            onPressed: () => _resetAllData(context),
           ),
         ],
       ),
@@ -240,6 +246,126 @@ class RegisteredStudentsScreen extends ConsumerWidget {
       return _ParentInfo(label: 'Awaiting parent setup', color: AppColors.info, icon: Icons.person_outline);
     }
     return _ParentInfo(label: 'Parent not linked', color: AppColors.textTertiary, icon: Icons.person_outline);
+  }
+
+  Future<void> _resetAllData(BuildContext context) async {
+    // Count existing data for the confirmation message
+    int photoCount = 0, childCount = 0, parentCount = 0;
+    try {
+      final photosSnap = await FirebaseFirestore.instance.collection('photos').get();
+      photoCount = photosSnap.docs.length;
+      final childrenSnap = await FirebaseFirestore.instance.collection('children').get();
+      childCount = childrenSnap.docs.length;
+      final parentsSnap = await FirebaseFirestore.instance.collection('parents').get();
+      parentCount = parentsSnap.docs.length;
+    } catch (_) {}
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(children: [
+          const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 24),
+          const SizedBox(width: 8),
+          Text('⚠️ Reset All Data?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('This will permanently delete:', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text('📸 $photoCount photos', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+            Text('👶 $childCount children', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+            Text('👨‍👩‍👧 $parentCount parents', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            Text('Including all uploaded files and face enrollments.\n\nThis action cannot be undone.', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.error)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            child: Text('Delete All', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    // Show progress
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Row(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(width: 16), Text('Resetting...')])))),
+    );
+
+    int deletedPhotos = 0, deletedChildren = 0, deletedParents = 0;
+
+    // 1) Delete all photos
+    try {
+      final photosSnap = await FirebaseFirestore.instance.collection('photos').get();
+      for (final doc in photosSnap.docs) {
+        await doc.reference.delete();
+        deletedPhotos++;
+      }
+    } catch (_) {}
+
+    // 2) Delete all children
+    try {
+      final childrenSnap = await FirebaseFirestore.instance.collection('children').get();
+      for (final doc in childrenSnap.docs) {
+        await doc.reference.delete();
+        deletedChildren++;
+      }
+    } catch (_) {}
+
+    // 3) Delete all parents
+    try {
+      final parentsSnap = await FirebaseFirestore.instance.collection('parents').get();
+      for (final doc in parentsSnap.docs) {
+        await doc.reference.delete();
+        deletedParents++;
+      }
+    } catch (_) {}
+
+    // 4) Delete Firebase Storage folders
+    try {
+      final photoFiles = await FirebaseStorage.instance.ref().child('photos').listAll();
+      for (final item in photoFiles.items) {
+        await item.delete();
+      }
+    } catch (_) {}
+    try {
+      final childFiles = await FirebaseStorage.instance.ref().child('children').listAll();
+      for (final prefix in childFiles.prefixes) {
+        final subFiles = await prefix.listAll();
+        for (final item in subFiles.items) {
+          await item.delete();
+        }
+      }
+      for (final item in childFiles.items) {
+        await item.delete();
+      }
+    } catch (_) {}
+
+    // 5) Clear InsightFace backend
+    InsightFaceService.deleteAllEnrollments();
+
+    // Close progress dialog
+    if (context.mounted) Navigator.of(context).pop();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🧹 Reset complete — $deletedPhotos photos, $deletedChildren children, $deletedParents parents cleared'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   void _navigateToRegister(BuildContext context, WidgetRef ref) {

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
+import '../../../data/repositories/photo_repository.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../teacher/providers/teacher_photo_provider.dart';
 
-/// Full-screen photo viewer for parents with swipe left/right and pinch-to-zoom.
-class ParentPhotoViewerScreen extends StatefulWidget {
+/// Full-screen photo viewer with swipe left/right and pinch-to-zoom.
+/// Used by both parents and teachers. Teachers see a delete button.
+class ParentPhotoViewerScreen extends ConsumerStatefulWidget {
   final List<PhotoModel> photos;
   final int initialIndex;
 
@@ -16,14 +21,17 @@ class ParentPhotoViewerScreen extends StatefulWidget {
   });
 
   @override
-  State<ParentPhotoViewerScreen> createState() =>
+  ConsumerState<ParentPhotoViewerScreen> createState() =>
       _ParentPhotoViewerScreenState();
 }
 
-class _ParentPhotoViewerScreenState extends State<ParentPhotoViewerScreen> {
+class _ParentPhotoViewerScreenState
+    extends ConsumerState<ParentPhotoViewerScreen> {
   late PageController _pageController;
   late int _currentIndex;
   bool _showOverlay = true;
+  // Track which photos have been deleted locally for immediate UI update
+  final Set<int> _deletedIndices = {};
 
   @override
   void initState() {
@@ -39,6 +47,78 @@ class _ParentPhotoViewerScreenState extends State<ParentPhotoViewerScreen> {
   }
 
   void _toggleOverlay() => setState(() => _showOverlay = !_showOverlay);
+
+  Future<void> _deleteCurrentPhoto() async {
+    if (_currentIndex >= widget.photos.length) return;
+
+    final photo = widget.photos[_currentIndex];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete Photo?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'This will permanently remove the photo from storage.',
+            style: GoogleFonts.nunito(
+                fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
+            child: Text('Delete',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final photoId = photo.id;
+    final photoUrl = photo.url;
+    final isMock = ref.read(authProvider).usingMockData;
+
+    // Remove from session state immediately
+    ref.read(teacherPhotoStateProvider.notifier).removePhoto(photoId);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('🗑️ Photo deleted'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    // Perform actual deletion from Firebase
+    if (!isMock) {
+      await PhotoRepository.deletePhoto(photoId, photoUrl);
+    }
+
+    // Navigate away: pop if only one photo left, otherwise remove from list
+    if (!mounted) return;
+    if (widget.photos.length <= 1) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    // Remove from list and adjust index
+    setState(() {
+      widget.photos.removeAt(_currentIndex);
+      if (_currentIndex >= widget.photos.length) {
+        _currentIndex = widget.photos.length - 1;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,8 +192,12 @@ class _ParentPhotoViewerScreenState extends State<ParentPhotoViewerScreen> {
                         ),
                       ),
                     ),
-                    // Spacer to balance the close button
-                    const SizedBox(width: 48),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.redAccent, size: 22),
+                      tooltip: 'Delete Photo',
+                      onPressed: _deleteCurrentPhoto,
+                    ),
                   ],
                 ),
               ),

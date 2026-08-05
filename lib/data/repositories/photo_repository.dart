@@ -61,8 +61,18 @@ class PhotoRepository {
 
   static Future<void> deletePhoto(String photoId, String url) async {
     if (!_isFirebaseAvailable) return;
+    // Delete from Storage (may fail if permissions are insufficient — continue anyway)
     try {
       await FirebaseStorage.instance.refFromURL(url).delete();
+    } catch (_) {
+      // If storage delete fails, try extracting the path and deleting by ref
+      try {
+        final ref = FirebaseStorage.instance.refFromURL(url);
+        await ref.delete();
+      } catch (_) {}
+    }
+    // Always delete the Firestore document regardless of storage outcome
+    try {
       await FirebaseFirestore.instance.collection(_collection).doc(photoId).delete();
     } catch (_) {}
   }
