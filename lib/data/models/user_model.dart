@@ -1,6 +1,9 @@
 /// User roles in the KidConnect app
 enum UserRole { parent, teacher }
 
+/// Status for parent accounts created by teachers
+enum ParentStatus { pendingCompletion, active }
+
 /// User model representing a parent or teacher
 class UserModel {
   final String id;
@@ -9,6 +12,9 @@ class UserModel {
   final UserRole role;
   final String? avatarUrl;
   final String? phone;
+  final String? alternatePhone;
+  final ParentStatus status;
+  final String? createdBy;
   final DateTime createdAt;
 
   const UserModel({
@@ -18,6 +24,9 @@ class UserModel {
     required this.role,
     this.avatarUrl,
     this.phone,
+    this.alternatePhone,
+    this.status = ParentStatus.active,
+    this.createdBy,
     required this.createdAt,
   });
 

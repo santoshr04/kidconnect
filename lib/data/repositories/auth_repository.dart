@@ -44,6 +44,21 @@ class AuthRepository {
     await fb.FirebaseAuth.instance.signOut();
   }
 
+  /// Creates a new Firebase Auth account for a parent registered by a teacher.
+  /// Returns the created user's UID, or null on failure.
+  static Future<String?> createAccount(String email, String password) async {
+    if (!isFirebaseAvailable) return null;
+
+    try {
+      final credential = await fb.FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      return credential.user?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static fb.User? get currentUser {
     if (!isFirebaseAvailable) return null;
     return fb.FirebaseAuth.instance.currentUser;

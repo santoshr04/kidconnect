@@ -12,6 +12,7 @@ import '../features/parent/screens/face_enrollment_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
 import '../features/teacher/screens/teacher_gallery_screen.dart';
 import '../features/teacher/screens/photo_detail_screen.dart';
+import '../features/teacher/screens/student_registration_screen.dart';
 import '../features/messaging/screens/chat_screen.dart';
 import '../data/models/photo_model.dart';
 import 'bottom_nav_shell.dart';
@@ -159,6 +160,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/teacher/chat',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: Scaffold(body: Center(child: Text('Messaging Coming Soon'))),
+            ),
+          ),
+          GoRoute(
+            path: '/teacher/register',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: StudentRegistrationScreen(),
             ),
           ),
         ],
