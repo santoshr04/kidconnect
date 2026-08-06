@@ -339,7 +339,8 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     });
     _updateGalleryState();
 
-    if (_cachedImageBytes != null) {
+    // Incremental learning: teacher confirmation improves AI accuracy
+    if (_cachedImageBytes != null && circle.faceWidth > 0) {
       try {
         final cropBytes = await _cropFaceBytes(circle.faceLeft, circle.faceTop, circle.faceWidth, circle.faceHeight);
         if (cropBytes != null) {
@@ -348,7 +349,19 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       } catch (_) {}
     }
 
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(' $childName tagged & enrolled!'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
+    // Also trigger incremental learning using the full image URL
+    // This captures the face in context with full image quality
+    final photoUrl = widget.photo.url;
+    if (photoUrl.startsWith('https://')) {
+      // Fire and forget — don't block the UI
+      InsightFaceService.incrementalLearn(
+        childId: childId,
+        name: childName,
+        imageUrl: photoUrl,
+      );
+    }
+
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(' $childName tagged & learning...'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
   }
 
   @override Widget build(BuildContext context) {

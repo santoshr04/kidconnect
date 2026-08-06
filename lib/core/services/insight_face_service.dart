@@ -9,6 +9,9 @@ class DetectedFace {
   final String? childId;
   final String? name;
   final double? confidence;
+  final String confidenceTier; // 'high', 'medium', 'low', 'low_quality'
+  final String confidenceLabel; // 'Auto-tagged', 'Suggested', 'Unknown', 'Low quality'
+  final Map<String, dynamic>? suggestion; // Alternative match for medium confidence
 
   const DetectedFace({
     required this.left,
@@ -19,6 +22,9 @@ class DetectedFace {
     this.childId,
     this.name,
     this.confidence,
+    this.confidenceTier = 'low',
+    this.confidenceLabel = 'Unknown',
+    this.suggestion,
   });
 
   factory DetectedFace.fromJson(Map<String, dynamic> json) => DetectedFace(
@@ -30,6 +36,9 @@ class DetectedFace {
         childId: json['child_id'] as String?,
         name: json['name'] as String?,
         confidence: (json['confidence'] as num?)?.toDouble(),
+        confidenceTier: json['confidence_tier'] as String? ?? 'low',
+        confidenceLabel: json['confidence_label'] as String? ?? 'Unknown',
+        suggestion: json['suggestion'] as Map<String, dynamic>?,
       );
 }
 
@@ -197,6 +206,31 @@ class InsightFaceService {
         Uri.parse('$_baseUrl/delete_all_enrollments'),
       ).timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Call backend to add confirmed face data as incremental learning.
+  /// Called when teacher confirms or corrects a tag.
+  static Future<bool> incrementalLearn({
+    required String childId,
+    required String name,
+    required String imageUrl,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/incremental_learn'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'child_id': childId,
+          'name': name,
+          'image_url': imageUrl,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['success'] == true;
     } catch (_) {
       return false;
     }

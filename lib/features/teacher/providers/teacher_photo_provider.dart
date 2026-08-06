@@ -307,26 +307,48 @@ Future<void> _autoTagPhotoAsync(String photoId, String photoUrl) async {
     for (final face in result.faces) {
       final matchedId = face.childId;
       final isValid = matchedId != null && validIds.contains(matchedId);
-      if (face.matched && isValid) {
+      final tier = face.confidenceTier;
+
+      if (face.matched && isValid && tier == 'high') {
+        // High confidence — auto-tag
         matchedCount++;
         if (!childIds.contains(matchedId!)) childIds.add(matchedId);
+        aiDetections.add({
+          'childId': matchedId,
+          'confidence': face.confidence ?? 0,
+          'matched': true,
+          'tier': tier,
+        });
+      } else if (face.matched && isValid && tier == 'medium') {
+        // Medium confidence — save as suggestion but mark needs review
+        aiDetections.add({
+          'childId': '',
+          'confidence': face.confidence ?? 0,
+          'matched': false,
+          'tier': tier,
+          'suggestedId': matchedId ?? '',
+          'suggestedName': face.name ?? '',
+        });
+      } else {
+        // Low confidence or invalid — leave untagged
+        aiDetections.add({
+          'childId': '',
+          'confidence': face.confidence ?? 0,
+          'matched': false,
+          'tier': tier,
+        });
       }
-      aiDetections.add({
-        'childId': isValid ? (matchedId ?? '') : '',
-        'confidence': face.confidence ?? 0,
-        'matched': face.matched && isValid,
-      });
     }
 
-    // Only save if there are valid recognized child IDs
-    if (childIds.isNotEmpty) {
-      await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
-        'childIds': childIds,
-        'aiDetections': aiDetections,
-        'totalFaces': totalFaces,
-        'taggedFaces': matchedCount,
-      });
-    }
+    // Save: auto-tag high confidence, mark everything else needs review
+    final needsReview = matchedCount < totalFaces;
+    await FirebaseFirestore.instance.collection('photos').doc(photoId).update({
+      'childIds': childIds,
+      'aiDetections': aiDetections,
+      'totalFaces': totalFaces,
+      'taggedFaces': matchedCount,
+      if (needsReview && childIds.isEmpty) 'tags': ['__needs_review__'],
+    });
   } catch (e) {
     print('Auto-tag failed: $e');
   }
