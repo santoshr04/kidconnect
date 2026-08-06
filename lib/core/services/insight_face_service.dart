@@ -248,6 +248,28 @@ class InsightFaceService {
     }
   }
 
+  /// Remove a wrong embedding from a child's enrollment when teacher corrects/neglects a tag.
+  static Future<bool> unlearn({
+    required String childId,
+    required String imageUrl,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/unlearn'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'child_id': childId,
+          'image_url': imageUrl,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Recognize multiple face crops in ONE batch request.
   /// [faceBytesList] — list of cropped face images (one per detected face)
   /// Returns list of results in same order.

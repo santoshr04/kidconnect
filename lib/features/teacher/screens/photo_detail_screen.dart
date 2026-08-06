@@ -592,6 +592,7 @@ class _FaceCircle {
   final String id; final int index; final Color color; final Rect rect;
   String? matchedChildId; String? childName; double? confidence;
   bool isNeglected = false;
+  bool isTeacherConfirmed = false;
   final int faceLeft, faceTop, faceWidth, faceHeight;
 
   _FaceCircle({required this.id, required this.index, required this.color, required this.rect,

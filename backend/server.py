@@ -534,6 +534,84 @@ def verify_same_child():
         'similarity': round(float(score) * 100, 1)
     })
 
+@app.route('/unlearn', methods=['POST'])
+def unlearn():
+    """
+    Removes a specific embedding from a child's enrollment when a teacher
+    corrects or neglects a wrongly auto-tagged face.
+    
+    Expects: { child_id, image_url }
+    Downloads the image, extracts the face embedding, and removes the
+    closest matching embedding from that child's data.
+    """
+    data = request.get_json(silent=True) or {}
+    child_id = data.get('child_id')
+    image_url = data.get('image_url', '')
+    
+    if not child_id:
+        return jsonify({'error': 'Missing child_id'}), 400
+    if not image_url:
+        return jsonify({'error': 'Missing image_url'}), 400
+    if child_id not in _enrolled or not _enrolled[child_id]['embeddings']:
+        return jsonify({'success': False, 'message': 'Child not found or no embeddings'})
+    
+    import urllib.request
+    try:
+        req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
+        img_bytes = urllib.request.urlopen(req, timeout=30).read()
+    except Exception as e:
+        return jsonify({'error': f'Failed to download image: {str(e)}'}), 400
+    
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    import cv2
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({'error': 'Invalid image'}), 400
+    
+    faces = get_face_app().get(img)
+    if not faces:
+        return jsonify({'success': False, 'message': 'No face found — nothing to unlearn'})
+    
+    embedding = faces[0].embedding
+    if embedding is None:
+        return jsonify({'success': False, 'message': 'No embedding extracted'})
+    
+    # Find the closest matching embedding and remove it
+    stored_embs = _enrolled[child_id]['embeddings']
+    if not stored_embs:
+        return jsonify({'success': False, 'message': 'No embeddings to compare'})
+    
+    best_idx = 0
+    best_score = 0
+    for idx, stored_emb in enumerate(stored_embs):
+        score = cosine_similarity(embedding, stored_emb)
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+    
+    if best_score < 0.40:
+        return jsonify({
+            'success': False,
+            'message': 'No close match found for unlearning',
+            'best_score': round(best_score * 100, 1)
+        })
+    
+    # Remove the wrong embedding
+    removed = stored_embs.pop(best_idx)
+    # Also remove the corresponding usage count if present
+    uc = _enrolled[child_id].get('usage_count', [])
+    if best_idx < len(uc):
+        uc.pop(best_idx)
+    
+    save_enrolled()
+    
+    return jsonify({
+        'success': True,
+        'child_id': child_id,
+        'removed_score': round(best_score * 100, 1),
+        'remaining_embeddings': len(stored_embs),
+    })
+
 @app.route('/delete_enrollment/<child_id>', methods=['DELETE'])
 def delete_enrollment(child_id):
     global _enrolled
