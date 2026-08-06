@@ -6,6 +6,14 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 
+class _ChildMedicalData {
+  String bloodGroup;
+  String allergies;
+  String medicalInfo;
+  String emergencyContact;
+  _ChildMedicalData({this.bloodGroup = '', this.allergies = '', this.medicalInfo = '', this.emergencyContact = ''});
+}
+
 class ParentProfileScreen extends ConsumerStatefulWidget {
   final bool isViewMode;
   const ParentProfileScreen({super.key, this.isViewMode = false});
@@ -27,8 +35,10 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   String? _bloodGroup;
   bool _saving = false;
   bool _editing = false;
+  int _selectedChildIndex = 0;
   Map<String, dynamic>? _parentData;
   List<Map<String, dynamic>> _children = [];
+  final Map<String, _ChildMedicalData> _childMedical = {};
 
   @override
   void initState() {
@@ -69,22 +79,43 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         _addressCtrl.text = data['address'] ?? '';
         _fatherNameCtrl.text = data['fatherName'] ?? '';
         _motherNameCtrl.text = data['motherName'] ?? '';
-        _bloodGroupCtrl.text = data['bloodGroup'] ?? '';
-        _allergiesCtrl.text = data['allergies'] ?? '';
-        _medicalCtrl.text = data['medicalInfo'] ?? '';
-        _emergencyCtrl.text = data['emergencyContact'] ?? '';
-        _bloodGroup = data['bloodGroup'];
       }
 
       // Load children
       final childrenSnap = await FirebaseFirestore.instance
-          .collection('children')
-          .where('parentId', isEqualTo: parentId)
-          .get();
-      if (mounted) {
-        setState(() => _children = childrenSnap.docs.map((d) => d.data()).toList());
-      }
+              .collection('children')
+              .where('parentId', isEqualTo: parentId)
+              .get();
+          if (mounted) {
+            setState(() => _children = childrenSnap.docs.map((d) => d.data()).toList());
+            // Load per-child medical data from Firestore
+            for (var i = 0; i < _children.length; i++) {
+              final childId = _children[i]['id'] as String? ?? '';
+              if (childId.isNotEmpty && !_childMedical.containsKey(childId)) {
+                final childData = _children[i];
+                _childMedical[childId] = _ChildMedicalData(
+                  bloodGroup: childData['bloodGroup'] as String? ?? '',
+                  allergies: childData['allergies'] as String? ?? '',
+                  medicalInfo: childData['medicalInfo'] as String? ?? '',
+                  emergencyContact: childData['emergencyContact'] as String? ?? '',
+                );
+              }
+            }
+            // Load selected child's data into controllers
+            _loadChildFields();
+          }
     } catch (_) {}
+  }
+
+  void _loadChildFields() {
+    if (_children.isEmpty || _selectedChildIndex >= _children.length) return;
+    final childId = _children[_selectedChildIndex]['id'] as String? ?? '';
+    final data = _childMedical[childId] ?? _ChildMedicalData();
+    _bloodGroupCtrl.text = data.bloodGroup;
+    _allergiesCtrl.text = data.allergies;
+    _medicalCtrl.text = data.medicalInfo;
+    _emergencyCtrl.text = data.emergencyContact;
+    _bloodGroup = data.bloodGroup.isNotEmpty ? data.bloodGroup : null;
   }
 
   Future<void> _save() async {
@@ -97,24 +128,32 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     if (parentId == null) return;
 
     try {
+      // Save parent-level fields
       await FirebaseFirestore.instance.collection('parents').doc(parentId).update({
         'email': _emailCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
         'fatherName': _fatherNameCtrl.text.trim(),
         'motherName': _motherNameCtrl.text.trim(),
-        'bloodGroup': _bloodGroup,
-        'allergies': _allergiesCtrl.text.trim(),
-        'medicalInfo': _medicalCtrl.text.trim(),
-        'emergencyContact': _emergencyCtrl.text.trim(),
         'status': 'active',
       });
 
-      // Update children DOB and blood group
-      for (final child in _children) {
-        final childId = child['id'] as String? ?? '';
+      // Save per-child medical data to the selected child
+      if (_children.isNotEmpty && _selectedChildIndex < _children.length) {
+        final childId = _children[_selectedChildIndex]['id'] as String? ?? '';
         if (childId.isNotEmpty) {
+          // Update local cache
+          _childMedical[childId] = _ChildMedicalData(
+            bloodGroup: _bloodGroupCtrl.text.trim(),
+            allergies: _allergiesCtrl.text.trim(),
+            medicalInfo: _medicalCtrl.text.trim(),
+            emergencyContact: _emergencyCtrl.text.trim(),
+          );
+          // Save to Firestore
           await FirebaseFirestore.instance.collection('children').doc(childId).update({
-            'bloodGroup': _bloodGroup,
+            'bloodGroup': _bloodGroupCtrl.text.trim(),
+            'allergies': _allergiesCtrl.text.trim(),
+            'medicalInfo': _medicalCtrl.text.trim(),
+            'emergencyContact': _emergencyCtrl.text.trim(),
           });
         }
       }
@@ -129,7 +168,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
             duration: const Duration(seconds: 3),
           ),
         );
-        // After profile save, go to face training — mandatory step
         context.go('/parent/face-setup');
       }
     } catch (e) {
@@ -300,8 +338,41 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     ]);
   }
 
+  Widget _buildChildSelector() {
+    if (_children.length <= 1) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<int>(
+            value: _selectedChildIndex,
+            isExpanded: true,
+            icon: const Icon(Icons.expand_more, color: AppColors.textSecondary),
+            style: GoogleFonts.nunito(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
+            items: List.generate(_children.length, (i) =>
+              DropdownMenuItem(value: i, child: Text('Data for: ${_children[i]['name']}'))
+            ),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() { _selectedChildIndex = val; _loadChildFields(); });
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEditableFields() {
     return Column(children: [
+      _buildChildSelector(),
+      const SizedBox(height: 8),
       _buildTextField('Email Address *', _emailCtrl, TextInputType.emailAddress, 'Enter your email'),
       const SizedBox(height: 14),
       _buildTextField('Father\'s Name', _fatherNameCtrl, TextInputType.name, 'Father\'s full name'),

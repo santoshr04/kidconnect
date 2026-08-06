@@ -38,9 +38,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/role-select';
       }
 
-      if (isAuthenticated && (isLoginRoute || isParentLoginRoute)) {
+      if (isAuthenticated && isLoginRoute) {
         if (authState.isParent) {
-          // Check if parent needs to complete profile
           final status = authState.currentUser?.status;
           if (status == ParentStatus.pendingCompletion) {
             return '/parent/complete-profile';
