@@ -7,9 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/insight_face_service.dart';
-import '../../../data/mock/mock_data.dart';
 import '../../auth/providers/auth_provider.dart';
 
 class FaceEnrollmentScreen extends ConsumerStatefulWidget {
@@ -34,6 +34,7 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
 
   @override void initState() {
     super.initState();
+    _loadChildName();
     _loadEnrollmentStatus();
   }
 
@@ -63,8 +64,24 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
     _savedPhotoPaths = paths;
   }
 
-  String get _childId => widget.childId ?? ref.read(authProvider).selectedChildId ?? 'child_ruthvi';
-  String get _childName => widget.childName ?? MockData.getChildById(_childId)?.firstName ?? 'Child';
+  String get _childId => widget.childId ?? ref.read(authProvider).selectedChildId ?? '';
+  String _childName = 'Child';
+
+  Future<void> _loadChildName() async {
+    if (widget.childName != null && widget.childName!.isNotEmpty && widget.childName != 'Child') {
+      _childName = widget.childName!;
+      return;
+    }
+    // Load from Firestore
+    try {
+      final doc = await FirebaseFirestore.instance.collection('children').doc(_childId).get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        _childName = data['name'] as String? ?? 'Child';
+      }
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
   int get _validCount => _photos.where((p) => p.hasValidated && p.isValid).length;
 
   Future<void> _deleteEnrollment() async {
@@ -279,6 +296,13 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
     await _saveTrainedPhotos(savedPaths + _savedPhotoPaths);
     setState(() { _isEnrolling = false; _statusMessage = success > 0 ? '✅ Trained with $success photos!' : 'Training failed'; });
     if (success > 0) {
+      // Mark child as face-enrolled in Firestore
+      try {
+        await FirebaseFirestore.instance.collection('children').doc(_childId).update({
+          'hasFaceProfile': true,
+          'enrolledFaceCount': FieldValue.increment(success),
+        });
+      } catch (_) {}
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$_childName trained! 🎉'), backgroundColor: AppColors.success));
       Future.delayed(const Duration(seconds: 1), () { if (mounted) {
         setState(() { _isCurrentlyEnrolled = true; _existingEmbedCount += success; _showTrainingView = false; _photos.clear(); });

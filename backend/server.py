@@ -453,6 +453,9 @@ def incremental_learn():
     
     if child_id in _enrolled:
         _enrolled[child_id]['confirmed_count'] = _enrolled[child_id].get('confirmed_count', 0) + 1
+        # Always update name when teacher provides a real name
+        if name != child_id and name not in ('Child', 'Unknown', ''):
+            _enrolled[child_id]['name'] = name
     
     save_enrolled()
     

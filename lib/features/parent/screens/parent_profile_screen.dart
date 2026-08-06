@@ -123,12 +123,14 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Profile completed! 🎉'),
+            content: const Text('✅ Profile saved! Now train your child\'s face for AI recognition.'),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
           ),
         );
-        context.go('/parent/gallery');
+        // After profile save, go to face training — mandatory step
+        context.go('/parent/face-setup');
       }
     } catch (e) {
       if (mounted) {

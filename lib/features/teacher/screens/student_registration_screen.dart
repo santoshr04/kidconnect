@@ -529,7 +529,6 @@ class _StudentRegistrationScreenState
                                 color: AppColors.textSecondary,
                                 fontWeight: FontWeight.w500)),
                         const SizedBox(height: 20),
-                        _buildParentCard(state),
                         Row(
                           children: [
                             Container(
@@ -582,6 +581,8 @@ class _StudentRegistrationScreenState
                             ),
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        _buildParentCard(state),
                       ],
                     ),
                   ),
