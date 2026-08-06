@@ -12,10 +12,9 @@ _face_app = None
 _enrolled = {}
 _DATA_FILE = 'enrolled_faces.json'
 
-# Confidence thresholds
-CONFIDENCE_HIGH = 0.55    # Auto-tag with high confidence
-CONFIDENCE_MEDIUM = 0.35  # Suggest match, needs teacher confirmation
-# Below 0.35 = unknown
+# Confidence thresholds (only used for labeling, not filtering)
+CONFIDENCE_HIGH = 0.35
+CONFIDENCE_MEDIUM = 0.35
 
 def get_face_app():
     global _face_app
@@ -32,11 +31,9 @@ def load_enrolled():
             data = json.load(f)
             for child_id, info in data.items():
                 info['embeddings'] = [np.array(e) for e in info['embeddings']]
-                # Track usage count for each embedding (for quality scoring)
                 if 'usage_count' not in info:
                     info['usage_count'] = [1] * len(info['embeddings'])
                 if 'confirmed_count' not in info:
-                    # Track how many times this child has been confirmed by teacher
                     info['confirmed_count'] = info.get('confirmed_count', 0)
                 if 'total_recognitions' not in info:
                     info['total_recognitions'] = info.get('total_recognitions', 0)
@@ -59,7 +56,6 @@ def cosine_similarity(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
 
 def get_confidence_tier(score):
-    """Returns (tier, label) for a similarity score."""
     if score >= CONFIDENCE_HIGH:
         return 'high', 'Auto-tagged'
     elif score >= CONFIDENCE_MEDIUM:
@@ -67,29 +63,28 @@ def get_confidence_tier(score):
     else:
         return 'low', 'Unknown'
 
-def is_duplicate_embedding(new_emb, existing_embs, threshold=0.85):
-    """Check if a new embedding is too similar to existing ones (duplicate)."""
+def is_duplicate_embedding(new_emb, existing_embs, threshold=0.95):
     for existing in existing_embs:
         if cosine_similarity(new_emb, existing) > threshold:
             return True
     return False
 
 def validate_embedding_quality(embedding, bbox, img_shape):
-    """Check embedding quality — discard if face too small or low quality."""
+    """Quality check for enrollment photos only. Not used during detection."""
     if embedding is None:
         return False
     face_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
     img_area = img_shape[0] * img_shape[1]
     face_ratio = face_area / img_area
-    # Discard if face is too small (< 3% of image)
     if face_ratio < 0.03:
         return False
-    # Discard embeddings with NaN values
     if np.any(np.isnan(embedding)):
         return False
     return True
 
 load_enrolled()
+
+# ─── ORIGINAL ENDPOINTS (restored from commit 5561503) ───
 
 @app.route('/enroll', methods=['POST'])
 def enroll():
@@ -111,12 +106,11 @@ def enroll():
     embedding = faces[0].embedding
     bbox = faces[0].bbox.astype(float)
     
-    # Validate embedding quality
+    # Quality validation for enrollment
     if not validate_embedding_quality(embedding, bbox, img_shape):
         return jsonify({'error': 'Face quality too low — please take a clearer, closer photo'}), 400
     
     if child_id in _enrolled:
-        # Check for duplicate before adding
         if is_duplicate_embedding(embedding, _enrolled[child_id]['embeddings']):
             return jsonify({
                 'success': False,
@@ -127,6 +121,9 @@ def enroll():
             })
         _enrolled[child_id]['embeddings'].append(embedding)
         _enrolled[child_id].setdefault('usage_count', []).append(1)
+        # Update name if teacher provided a better one
+        if name != child_id and name not in ('Child', 'Unknown', ''):
+            _enrolled[child_id]['name'] = name
     else:
         _enrolled[child_id] = {
             'name': name,
@@ -141,12 +138,11 @@ def enroll():
 
 @app.route('/recognize_batch', methods=['POST'])
 def recognize_batch():
-    """Recognize multiple face images in one request. Returns confidence tiers."""
     results = []
     enrolled_ids = list(_enrolled.keys())
     if not enrolled_ids:
         for i in range(len(request.files)):
-            results.append({'matched': False, 'confidence_tier': 'low', 'message': 'No enrolled children'})
+            results.append({'matched': False, 'message': 'No enrolled children', 'confidence_tier': 'low', 'confidence_label': 'Unknown'})
         return jsonify({'results': results})
 
     for key in request.files:
@@ -156,12 +152,12 @@ def recognize_batch():
         import cv2
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
-            results.append({'matched': False, 'confidence_tier': 'low', 'message': 'Invalid'})
+            results.append({'matched': False, 'message': 'Invalid', 'confidence_tier': 'low', 'confidence_label': 'Unknown'})
             continue
 
         faces = get_face_app().get(img)
         if not faces:
-            results.append({'matched': False, 'confidence_tier': 'low', 'message': 'No face'})
+            results.append({'matched': False, 'message': 'No face', 'confidence_tier': 'low', 'confidence_label': 'Unknown'})
             continue
 
         embedding = faces[0].embedding
@@ -184,16 +180,15 @@ def recognize_batch():
 
         tier, tier_label = get_confidence_tier(best_score)
         
-        if best_match and tier in ('high', 'medium'):
-            # Update usage count for the matched embedding
+        if best_match and best_score > 0.35:
             if best_match['child_id'] in _enrolled:
                 emb_idx = best_match.get('emb_index', -1)
-                if emb_idx >= 0 and emb_idx < len(_enrolled[best_match['child_id']].get('usage_count', [])):
+                uc = _enrolled[best_match['child_id']].get('usage_count', [])
+                if emb_idx >= 0 and emb_idx < len(uc):
                     _enrolled[best_match['child_id']]['usage_count'][emb_idx] += 1
                 _enrolled[best_match['child_id']]['total_recognitions'] = \
                     _enrolled[best_match['child_id']].get('total_recognitions', 0) + 1
             
-            # Provide second-best suggestion when confidence is medium
             suggestion = None
             if tier == 'medium' and second_best_match and second_best_score > 0.30:
                 suggestion = {
@@ -210,8 +205,6 @@ def recognize_batch():
                 'confidence_tier': tier,
                 'confidence_label': tier_label,
                 'suggestion': suggestion,
-                # Embedding sent back so client can use it for incremental learning
-                # (embedding is already available, no need to resend)
             })
             save_enrolled()
         else:
@@ -256,7 +249,7 @@ def recognize():
     
     tier, tier_label = get_confidence_tier(best_score)
     
-    if best_match and tier in ('high', 'medium'):
+    if best_match and best_score > 0.35:
         suggestion = None
         if tier == 'medium' and second_best_match and second_best_score > 0.30:
             suggestion = {
@@ -265,8 +258,7 @@ def recognize():
                 'confidence': round(second_best_score * 100, 1)
             }
         return jsonify({
-            'matched': True,
-            'child_id': best_match['child_id'],
+            'matched': True, 'child_id': best_match['child_id'],
             'name': best_match['name'],
             'confidence': round(best_score * 100, 1),
             'confidence_tier': tier,
@@ -280,32 +272,18 @@ def recognize():
         'message': 'Unknown'
     })
 
-@app.route('/enrolled', methods=['GET'])
-def list_enrolled():
-    return jsonify([
-        {
-            'child_id': kid,
-            'name': info['name'],
-            'embeddings_count': len(info['embeddings']),
-            'confirmed_count': info.get('confirmed_count', 0),
-            'total_recognitions': info.get('total_recognitions', 0),
-        }
-        for kid, info in _enrolled.items()
-    ])
-
 @app.route('/detect_and_recognize', methods=['POST'])
 def detect_and_recognize():
     """
-    Unified endpoint: takes an image URL, downloads it,
-    detects all faces, extracts embeddings, and matches against enrolled children.
-    Returns bounding boxes + recognition results with confidence tiers.
+    Restored detection + recognition logic from commit 5561503.
+    Each face independently matched against all enrolled children.
+    Annotated with confidence tiers and suggestions (post-match, no filtering).
     """
     data = request.get_json(silent=True) or {}
     image_url = data.get('image_url', '')
     if not image_url:
         return jsonify({'error': 'Missing image_url'}), 400
 
-    # Download image from URL
     import urllib.request
     try:
         req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
@@ -319,9 +297,8 @@ def detect_and_recognize():
     if img is None:
         return jsonify({'error': 'Invalid image'}), 400
 
-    img_height, img_width = int(img.shape[0]), int(img.shape[1])
+    img_height, img_width = img.shape[:2]
 
-    # Run InsightFace detection + embedding in one shot
     faces = get_face_app().get(img)
     if not faces:
         return jsonify({'faces': [], 'image_width': img_width, 'image_height': img_height})
@@ -351,19 +328,11 @@ def detect_and_recognize():
 
         if enrolled_ids and face.embedding is not None:
             embedding = face.embedding
-            
-            # Validate embedding quality
-            if not validate_embedding_quality(embedding, face.bbox.astype(float), (img_height, img_width)):
-                face_result['confidence_tier'] = 'low_quality'
-                face_result['confidence_label'] = 'Low quality'
-                results.append(face_result)
-                continue
-            
             best_score = 0
             best_match = None
             second_best_score = 0
             second_best_match = None
-            
+
             for child_id, info in _enrolled.items():
                 for idx, stored_emb in enumerate(info['embeddings']):
                     score = cosine_similarity(embedding, stored_emb)
@@ -386,9 +355,8 @@ def detect_and_recognize():
                         }
 
             tier, tier_label = get_confidence_tier(best_score)
-            
-            if best_match and tier in ('high', 'medium'):
-                # Update usage stats
+
+            if best_match and best_score > 0.35:
                 if best_match['child_id'] in _enrolled:
                     emb_idx = best_match.get('emb_index', -1)
                     uc = _enrolled[best_match['child_id']].get('usage_count', [])
@@ -396,7 +364,7 @@ def detect_and_recognize():
                         _enrolled[best_match['child_id']]['usage_count'][emb_idx] += 1
                     _enrolled[best_match['child_id']]['total_recognitions'] = \
                         _enrolled[best_match['child_id']].get('total_recognitions', 0) + 1
-                
+
                 suggestion = None
                 if tier == 'medium' and second_best_match and second_best_score > 0.30:
                     suggestion = {
@@ -404,7 +372,7 @@ def detect_and_recognize():
                         'name': second_best_match['name'],
                         'confidence': round(second_best_score * 100, 1)
                     }
-                
+
                 face_result.update({
                     'matched': True,
                     'child_id': best_match['child_id'],
@@ -424,16 +392,10 @@ def detect_and_recognize():
         'image_height': img_height,
     })
 
+# ─── NEW ENDPOINTS (post-5561503 features) ───
+
 @app.route('/incremental_learn', methods=['POST'])
 def incremental_learn():
-    """
-    Teacher confirmed or corrected a face tag.
-    Adds the face embedding to the child's training data for continuous improvement.
-    
-    Expects: { child_id, name, image_url }
-    Downloads the image, extracts the face, and adds the embedding.
-    Returns updated enrollment count.
-    """
     data = request.get_json(silent=True) or {}
     child_id = data.get('child_id')
     name = data.get('name', child_id)
@@ -444,7 +406,6 @@ def incremental_learn():
     if not image_url:
         return jsonify({'error': 'Missing image_url'}), 400
     
-    # Download image
     import urllib.request
     try:
         req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
@@ -463,8 +424,6 @@ def incremental_learn():
     if not faces:
         return jsonify({'error': 'No face found in image'}), 400
     
-    # Take all detected faces as potential learning data
-    # For confirmed tag, teacher selected this child specifically
     embeddings_added = 0
     duplicates_skipped = 0
     
@@ -475,7 +434,6 @@ def incremental_learn():
         if not validate_embedding_quality(embedding, bbox, img_shape):
             continue
         
-        # Create or update child
         if child_id not in _enrolled:
             _enrolled[child_id] = {
                 'name': name,
@@ -485,7 +443,6 @@ def incremental_learn():
                 'total_recognitions': 0,
             }
         
-        # Check for duplicate
         if is_duplicate_embedding(embedding, _enrolled[child_id]['embeddings']):
             duplicates_skipped += 1
             continue
@@ -494,7 +451,6 @@ def incremental_learn():
         _enrolled[child_id].setdefault('usage_count', []).append(1)
         embeddings_added += 1
     
-    # Increment confirmed count — teacher explicitly confirmed this child
     if child_id in _enrolled:
         _enrolled[child_id]['confirmed_count'] = _enrolled[child_id].get('confirmed_count', 0) + 1
     
@@ -510,56 +466,44 @@ def incremental_learn():
         'confirmed_count': _enrolled[child_id].get('confirmed_count', 0) if child_id in _enrolled else 0,
     })
 
+@app.route('/enrolled', methods=['GET'])
+def list_enrolled():
+    return jsonify([
+        {
+            'child_id': kid,
+            'name': info['name'],
+            'embeddings_count': len(info['embeddings']),
+            'confirmed_count': info.get('confirmed_count', 0),
+            'total_recognitions': info.get('total_recognitions', 0),
+        }
+        for kid, info in _enrolled.items()
+    ])
+
 @app.route('/validate_face', methods=['POST'])
 def validate_face():
-    """
-    Validates a face photo for parent enrollment:
-    - Checks exactly 1 face is present
-    - Checks face quality (size ratio > 5%)
-    - Returns embedding for cross-photo comparison
-    """
     if 'face' not in request.files:
         return jsonify({'valid': False, 'error': 'No image uploaded'}), 400
-
     img_bytes = request.files['face'].read()
     nparr = np.frombuffer(img_bytes, np.uint8)
     import cv2
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         return jsonify({'valid': False, 'error': 'Invalid image format'}), 400
-
     faces = get_face_app().get(img)
     face_count = len(faces)
-
     if face_count == 0:
         return jsonify({'valid': False, 'error': 'No face detected. Please upload a clear photo of the child\'s face.'})
-
     if face_count > 1:
         return jsonify({'valid': False, 'error': f'Multiple faces detected ({face_count}). Please upload a photo with only the child\'s face.', 'face_count': face_count})
-
-    # Exactly 1 face — good
     embedding = faces[0].embedding
     bbox = faces[0].bbox.astype(float)
     face_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
     img_area = img.shape[0] * img.shape[1]
     face_ratio = face_area / img_area
-
-    # Quality check: face should be at least 5% of the frame
     if face_ratio < 0.05:
-        return jsonify({
-            'valid': False,
-            'error': 'Face is too small in the photo. Please take a closer photo of the child.',
-            'face_count': 1
-        })
-    
-    # Check for NaN in embedding
+        return jsonify({'valid': False, 'error': 'Face is too small in the photo. Please take a closer photo of the child.', 'face_count': 1})
     if embedding is not None and np.any(np.isnan(embedding)):
-        return jsonify({
-            'valid': False,
-            'error': 'Face quality too low. Please retake with better lighting.',
-            'face_count': 1
-        })
-
+        return jsonify({'valid': False, 'error': 'Face quality too low. Please retake with better lighting.', 'face_count': 1})
     return jsonify({
         'valid': True,
         'face_count': 1,
@@ -569,7 +513,6 @@ def validate_face():
 
 @app.route('/check_enrolled', methods=['GET'])
 def check_enrolled():
-    """Check if a child is enrolled. Returns child_id -> name + embedding count."""
     return jsonify([
         {'child_id': kid, 'name': info['name'], 'embeddings_count': len(info['embeddings'])}
         for kid, info in _enrolled.items()
@@ -577,16 +520,11 @@ def check_enrolled():
 
 @app.route('/verify_same_child', methods=['POST'])
 def verify_same_child():
-    """
-    Checks if two face embeddings are from the same child.
-    Used to validate that all uploaded photos are of the same person.
-    """
     data = request.get_json(silent=True) or {}
     emb1 = data.get('embedding1')
     emb2 = data.get('embedding2')
     if not emb1 or not emb2:
         return jsonify({'same_child': False, 'error': 'Missing embeddings'}), 400
-
     score = cosine_similarity(np.array(emb1), np.array(emb2))
     return jsonify({
         'same_child': score > 0.40,
@@ -595,7 +533,6 @@ def verify_same_child():
 
 @app.route('/delete_enrollment/<child_id>', methods=['DELETE'])
 def delete_enrollment(child_id):
-    """Delete a child's enrollment data."""
     global _enrolled
     if child_id in _enrolled:
         del _enrolled[child_id]
@@ -605,7 +542,6 @@ def delete_enrollment(child_id):
 
 @app.route('/enrollment/<child_id>', methods=['GET'])
 def get_enrollment_info(child_id):
-    """Get enrollment info for a specific child."""
     if child_id in _enrolled:
         info = _enrolled[child_id]
         return jsonify({

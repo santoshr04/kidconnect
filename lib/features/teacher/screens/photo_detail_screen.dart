@@ -183,18 +183,12 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       );
 
       if (f.matched && f.childId != null) {
-        // Only accept match if the child ID is a registered Firestore child
-        final validChild = _allChildren.firstWhere(
-          (c) => c.id == f.childId,
-          orElse: () => ChildOption(id: '', name: '', initials: ''),
-        );
-        if (validChild.id.isNotEmpty) {
-          circle.matchedChildId = f.childId;
-          circle.childName = validChild.name;
-          circle.confidence = f.confidence;
-          if (!_taggedChildIds.contains(f.childId)) {
-            _taggedChildIds.add(f.childId!);
-          }
+        // Trust the backend's validated match
+        circle.matchedChildId = f.childId;
+        circle.childName = f.name ?? f.childId;
+        circle.confidence = f.confidence;
+        if (!_taggedChildIds.contains(f.childId)) {
+          _taggedChildIds.add(f.childId!);
         }
       }
       circs.add(circle);
