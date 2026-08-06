@@ -59,10 +59,17 @@ class _ParentPhoneLoginScreenState
     final success =
         await ref.read(authProvider.notifier).loginParentByPhone(phone);
 
-    if (!success && mounted) {
+    if (!mounted) return;
+
+    if (success) {
+      final authState = ref.read(authProvider);
+      if (authState.allChildren.length > 1) {
+        _showChildSelectionDialog(authState.allChildren);
+      }
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Phone number not found. Try 9611777914'),
+          content: const Text('Phone number not found'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -70,6 +77,37 @@ class _ParentPhoneLoginScreenState
         ),
       );
     }
+  }
+
+  void _showChildSelectionDialog(List<Map<String, String>> children) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Select Child',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: children.map((child) => ListTile(
+            leading: CircleAvatar(
+              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+              child: Text(
+                child['name']!.isNotEmpty ? child['name']![0].toUpperCase() : '?',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700, color: AppColors.primary),
+              ),
+            ),
+            title: Text(child['name']!,
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ref.read(authProvider.notifier).selectChild(child['id']!);
+            },
+          )).toList(),
+        ),
+      ),
+    );
   }
 
   @override
