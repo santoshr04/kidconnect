@@ -91,6 +91,18 @@ class InsightFaceService {
     } catch (e) { return {'error': e.toString()}; }
   }
 
+  /// Universal JSON-safe parsing for all API responses.
+  static Map<String, dynamic> _safeDecode(String body) {
+    if (body.trim().startsWith('<')) {
+      return {'error': 'Backend server returned HTML — check if it is running at $_baseUrl'};
+    }
+    try {
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      return {'error': 'Invalid server response: ${e.toString().substring(0, 100)}'};
+    }
+  }
+
   /// Unified detection + recognition: sends image URL, gets back
   /// all face bounding boxes + matching child info in one response.
   static Future<DetectResult> detectAndRecognize(String imageUrl) async {
@@ -100,7 +112,7 @@ class InsightFaceService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'image_url': imageUrl}),
       ).timeout(const Duration(seconds: 30));
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = _safeDecode(response.body);
       return DetectResult.fromJson(data);
     } catch (e) {
       return DetectResult(faces: [], imageWidth: 1, imageHeight: 1, error: e.toString());

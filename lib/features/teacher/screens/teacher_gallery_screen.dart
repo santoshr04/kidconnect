@@ -94,14 +94,14 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text('Re-tag All Photos?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
-        content: Text('This will clear all existing tagging and re-run AI recognition on every photo.\n\nPhotos tagged by parents will be overwritten.', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
+        title: Text('Smart Re-tag?', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text('This will only attempt to recognize faces that are currently Unknown or pending review.\n\nExisting tags and teacher-confirmed tags will NOT be modified.', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.nunito(fontWeight: FontWeight.w600))),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: Text('Re-tag All', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            child: Text('Re-tag Unknown', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -111,57 +111,272 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     setState(() { _isAutoTagging = true; _autoTagProgress = 0; });
 
     try {
+      // Fetch valid registered child IDs
+      final validIds = <String>{};
+      try {
+        final childrenSnap = await FirebaseFirestore.instance.collection('children').get();
+        for (final doc in childrenSnap.docs) {
+          validIds.add(doc.id);
+        }
+      } catch (_) {}
+
       final snapshot = await FirebaseFirestore.instance.collection('photos').get();
       final allDocs = snapshot.docs;
 
-      int cleared = 0;
-      for (final doc in allDocs) {
-        try {
-          await doc.reference.update({'childIds': [], 'aiDetections': [], 'tags': ['__needs_review__']});
-          cleared++;
-        } catch (_) {}
-      }
+      int photosProcessed = 0;
+      int facesResolved = 0;
+      int photosSkipped = 0;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🗑️ Cleared tags from $cleared photo(s). Re-tagging...'), backgroundColor: AppColors.info));
-      }
-
-      int tagged = 0;
       for (int i = 0; i < allDocs.length; i++) {
         final doc = allDocs[i];
-        final url = doc.data()['url'] as String?;
+        final data = doc.data();
+        final url = data['url'] as String?;
         if (url == null || !url.startsWith('https://')) continue;
         setState(() => _autoTagProgress = i + 1);
+
+        final existingDetections = (data['aiDetections'] as List?)
+            ?.map((d) => d as Map<String, dynamic>)
+            .toList() ?? [];
+        final existingChildIds = List<String>.from(data['childIds'] ?? []);
+
+        // Count untagged faces (those without a valid childId or with low tier)
+        final untaggedFaces = existingDetections.where((d) {
+          final cid = d['childId'] as String? ?? '';
+          final tier = d['tier'] as String? ?? 'low';
+          final matched = d['matched'] == true;
+          // Consider face untagged if: no childId, or tier is low/medium with no valid match
+          return cid.isEmpty || (!matched && tier != 'high');
+        }).toList();
+
+        // Skip if all faces are already properly tagged
+        if (untaggedFaces.isEmpty && existingChildIds.isNotEmpty) {
+          photosSkipped++;
+          continue;
+        }
+
+        // If no existing detections or all faces untagged, run full detection
+        final needFullDetection = existingDetections.isEmpty ||
+            untaggedFaces.length == existingDetections.length;
+
         try {
-          final result = await InsightFaceService.detectAndRecognize(url);
-          if (result.error != null || result.faces.isEmpty) continue;
-          final childIds = <String>[];
-          int matchedCount = 0;
-          for (final face in result.faces) {
-            if (face.matched && face.childId != null) {
-              matchedCount++;
-              if (!childIds.contains(face.childId!)) childIds.add(face.childId!);
+          if (needFullDetection) {
+            // Full detection for photos with no existing data
+            final result = await InsightFaceService.detectAndRecognize(url);
+            if (result.error != null || result.faces.isEmpty) continue;
+
+            final newChildIds = <String>[];
+            final newDetections = <Map<String, dynamic>>[];
+            int matchedCount = 0;
+
+            for (final face in result.faces) {
+              final matchedId = face.childId;
+              final isValid = matchedId != null && validIds.contains(matchedId);
+              final tier = face.confidenceTier;
+
+              if (face.matched && isValid && tier == 'high') {
+                matchedCount++;
+                if (!newChildIds.contains(matchedId!)) newChildIds.add(matchedId);
+                newDetections.add({
+                  'childId': matchedId,
+                  'confidence': face.confidence ?? 0,
+                  'matched': true,
+                  'tier': tier,
+                });
+              } else if (face.matched && isValid && tier == 'medium') {
+                newDetections.add({
+                  'childId': '',
+                  'confidence': face.confidence ?? 0,
+                  'matched': false,
+                  'tier': tier,
+                  'suggestedId': matchedId ?? '',
+                  'suggestedName': face.name ?? '',
+                });
+              } else {
+                newDetections.add({
+                  'childId': '',
+                  'confidence': face.confidence ?? 0,
+                  'matched': false,
+                  'tier': tier,
+                });
+              }
+            }
+
+            if (newChildIds.isNotEmpty) {
+              // Merge with any existing tags (shouldn't be any since we do full detection)
+              final mergedChildIds = <String>{...existingChildIds, ...newChildIds};
+              await doc.reference.update({
+                'childIds': mergedChildIds.toList(),
+                'aiDetections': newDetections,
+                'totalFaces': result.faces.length,
+                'taggedFaces': matchedCount,
+                if (mergedChildIds.isEmpty) 'tags': ['__needs_review__'] else 'tags': [],
+              });
+            } else if (existingChildIds.isEmpty) {
+              // Still save the detections even without matches
+              await doc.reference.update({
+                'aiDetections': newDetections,
+                'totalFaces': result.faces.length,
+                'taggedFaces': 0,
+                'tags': ['__needs_review__'],
+              });
+            }
+          } else {
+            // Partial re-tag: only re-evaluate untagged faces
+            // Run full detection to get current face positions and recognition
+            final result = await InsightFaceService.detectAndRecognize(url);
+            if (result.error != null || result.faces.isEmpty) continue;
+
+            final updatedDetections = <Map<String, dynamic>>[];
+            bool changed = false;
+
+            for (int j = 0; j < result.faces.length; j++) {
+              final newFace = result.faces[j];
+
+              // Try to match this new face to an existing detection by position overlap
+              int? matchedExistingIndex;
+              for (int k = 0; k < existingDetections.length; k++) {
+                final existing = existingDetections[k];
+                if (_boxesOverlap(
+                  newFace.left, newFace.top, newFace.width, newFace.height,
+                  (existing['left'] as num?)?.toDouble() ?? 0,
+                  (existing['top'] as num?)?.toDouble() ?? 0,
+                  (existing['width'] as num?)?.toDouble() ?? 0,
+                  (existing['height'] as num?)?.toDouble() ?? 0,
+                )) {
+                  matchedExistingIndex = k;
+                  break;
+                }
+              }
+
+              if (matchedExistingIndex != null) {
+                final existing = existingDetections[matchedExistingIndex];
+                final existingCid = existing['childId'] as String? ?? '';
+                final existingTier = existing['tier'] as String? ?? 'low';
+
+                // Preserve confirmed/tagged faces
+                if (existingCid.isNotEmpty && existingTier == 'high') {
+                  updatedDetections.add(existing);
+                } else {
+                  // This face was untagged — try to recognize it now
+                  final matchedId = newFace.childId;
+                  final isValid = matchedId != null && validIds.contains(matchedId);
+                  final tier = newFace.confidenceTier;
+
+                  if (newFace.matched && isValid && tier == 'high') {
+                    // New high-confidence match found!
+                    updatedDetections.add({
+                      'childId': matchedId!,
+                      'confidence': newFace.confidence ?? 0,
+                      'matched': true,
+                      'tier': tier,
+                    });
+                    facesResolved++;
+                    changed = true;
+                  } else if (newFace.matched && isValid && tier == 'medium') {
+                    updatedDetections.add({
+                      'childId': '',
+                      'confidence': newFace.confidence ?? 0,
+                      'matched': false,
+                      'tier': tier,
+                      'suggestedId': matchedId ?? '',
+                      'suggestedName': newFace.name ?? '',
+                    });
+                    if (existingCid.isEmpty) changed = true;
+                  } else {
+                    // Still unknown — keep as is
+                    updatedDetections.add(existing);
+                  }
+                }
+              } else {
+                // New face not in previous detections
+                final matchedId = newFace.childId;
+                final isValid = matchedId != null && validIds.contains(matchedId);
+                final tier = newFace.confidenceTier;
+
+                if (newFace.matched && isValid && tier == 'high') {
+                  updatedDetections.add({
+                    'childId': matchedId!,
+                    'confidence': newFace.confidence ?? 0,
+                    'matched': true,
+                    'tier': tier,
+                  });
+                  facesResolved++;
+                  changed = true;
+                } else if (newFace.matched && isValid && tier == 'medium') {
+                  updatedDetections.add({
+                    'childId': '',
+                    'confidence': newFace.confidence ?? 0,
+                    'matched': false,
+                    'tier': tier,
+                    'suggestedId': matchedId ?? '',
+                    'suggestedName': newFace.name ?? '',
+                  });
+                  changed = true;
+                } else {
+                  updatedDetections.add({
+                    'childId': '',
+                    'confidence': newFace.confidence ?? 0,
+                    'matched': false,
+                    'tier': tier,
+                  });
+                }
+              }
+            }
+
+            if (changed) {
+              // Recompute childIds from updated detections
+              final newChildIds = <String>{};
+              for (final d in updatedDetections) {
+                final cid = d['childId'] as String? ?? '';
+                if (cid.isNotEmpty && validIds.contains(cid)) {
+                  newChildIds.add(cid);
+                }
+              }
+              final hasUntagged = updatedDetections.any((d) =>
+                  (d['childId'] as String? ?? '').isEmpty);
+
+              await doc.reference.update({
+                'childIds': newChildIds.toList(),
+                'aiDetections': updatedDetections,
+                'totalFaces': updatedDetections.length,
+                'taggedFaces': updatedDetections.where((d) =>
+                    d['matched'] == true && (d['childId'] as String? ?? '').isNotEmpty).length,
+                if (hasUntagged && newChildIds.isEmpty)
+                  'tags': ['__needs_review__']
+                else
+                  'tags': [],
+              });
             }
           }
-          if (childIds.isNotEmpty) {
-            await doc.reference.update({
-              'childIds': childIds,
-              'totalFaces': result.faces.length,
-              'taggedFaces': matchedCount,
-              'tags': [],
-            });
-            tagged++;
-          }
+          photosProcessed++;
         } catch (_) {}
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Re-tagged $tagged photo(s)!'), backgroundColor: AppColors.success));
+        final message = photosSkipped > 0
+            ? '✅ Processed $photosProcessed photo(s). Resolved $facesResolved face(s). Skipped $photosSkipped already tagged.'
+            : '✅ Processed $photosProcessed photo(s). Resolved $facesResolved face(s).';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: AppColors.success));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
     }
     if (mounted) setState(() => _isAutoTagging = false);
+  }
+
+  /// Check if two bounding boxes overlap (IoU > 0.3).
+  static bool _boxesOverlap(double x1, double y1, double w1, double h1,
+      double x2, double y2, double w2, double h2) {
+    final left = x1 > x2 ? x1 : x2;
+    final top = y1 > y2 ? y1 : y2;
+    final right = (x1 + w1) < (x2 + w2) ? (x1 + w1) : (x2 + w2);
+    final bottom = (y1 + h1) < (y2 + h2) ? (y1 + h1) : (y2 + h2);
+    if (left >= right || top >= bottom) return false;
+    final intersection = (right - left) * (bottom - top);
+    final area1 = w1 * h1;
+    final area2 = w2 * h2;
+    final union = area1 + area2 - intersection;
+    return (intersection / union) > 0.3;
   }
 
   void _exitSelectionMode() => setState(() { _selectionMode = false; _selectedIds.clear(); });

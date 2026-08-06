@@ -151,12 +151,20 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       return;
     }
 
-    _imgWidth = result.imageWidth;
-    _imgHeight = result.imageHeight;
+    // Use backend image dimensions for face coordinate normalization
+    // These must match the bounding box pixel coordinates returned by the backend
+    final backendWidth = result.imageWidth;
+    final backendHeight = result.imageHeight;
+    _imgWidth = backendWidth;
+    _imgHeight = backendHeight;
+
+    // Sort faces left-to-right for consistent visual ordering
+    final sortedFaces = List<DetectedFace>.from(result.faces)
+      ..sort((a, b) => a.left.compareTo(b.left));
 
     final circs = <_FaceCircle>[];
-    for (var i = 0; i < result.faces.length; i++) {
-      final f = result.faces[i];
+    for (var i = 0; i < sortedFaces.length; i++) {
+      final f = sortedFaces[i];
       final faceLeft = f.left.toInt();
       final faceTop = f.top.toInt();
       final faceW = f.width.toInt();
@@ -166,7 +174,11 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
         id: 'face_$i',
         index: i + 1,
         color: _faceColors[i % _faceColors.length],
-        rect: Rect.fromLTWH(f.left / _imgWidth, f.top / _imgHeight, f.width / _imgWidth, f.height / _imgHeight),
+        rect: Rect.fromLTWH(
+            f.left / backendWidth,
+            f.top / backendHeight,
+            f.width / backendWidth,
+            f.height / backendHeight),
         faceLeft: faceLeft, faceTop: faceTop, faceWidth: faceW, faceHeight: faceH,
       );
 
@@ -220,9 +232,34 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   }
 
   Future<void> _doneTagging() async {
+    // Build per-face detection data with tier markers
+    final aiDetections = _faceCircles.map((circle) {
+      if (circle.matchedChildId != null && !circle.isNeglected) {
+        return {
+          'childId': circle.matchedChildId,
+          'confidence': circle.confidence ?? 0,
+          'matched': true,
+          'tier': 'high', // Manually confirmed = high confidence
+          'teacherConfirmed': true,
+        };
+      } else {
+        return {
+          'childId': '',
+          'confidence': 0,
+          'matched': false,
+          'tier': 'low',
+        };
+      }
+    }).toList();
+
     try {
+      final needsReview = _taggedChildIds.isEmpty;
       await FirebaseFirestore.instance.collection('photos').doc(widget.photo.id).update({
         'childIds': _taggedChildIds,
+        'aiDetections': aiDetections,
+        'totalFaces': _faceCircles.length,
+        'taggedFaces': _handledCount - _neglectedCount,
+        if (needsReview) 'tags': ['__needs_review__'] else 'tags': [],
       });
     } catch (_) {}
 

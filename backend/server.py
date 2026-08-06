@@ -56,7 +56,7 @@ def save_enrolled():
         json.dump(data, f)
 
 def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8)
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
 
 def get_confidence_tier(score):
     """Returns (tier, label) for a similarity score."""
@@ -319,7 +319,7 @@ def detect_and_recognize():
     if img is None:
         return jsonify({'error': 'Invalid image'}), 400
 
-    img_height, img_width = img.shape[:2]
+    img_height, img_width = int(img.shape[0]), int(img.shape[1])
 
     # Run InsightFace detection + embedding in one shot
     faces = get_face_app().get(img)
