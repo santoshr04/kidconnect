@@ -334,6 +334,8 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 height: 44,
                 child: TextButton.icon(
                   onPressed: () {
+                    final oldChildId = circle.matchedChildId;
+                    final wasAutoTagged = oldChildId != null && !circle.isTeacherConfirmed;
                     setState(() {
                       circle.isNeglected = true;
                       circle.matchedChildId = null;
@@ -341,6 +343,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                       circle.confidence = null;
                     });
                     _updateGalleryState();
+                    if (wasAutoTagged && widget.photo.url.startsWith('https://')) {
+                      InsightFaceService.unlearn(childId: oldChildId!, imageUrl: widget.photo.url);
+                    }
                     Navigator.pop(ctx);
                   },
                   icon: const Icon(Icons.do_not_disturb_alt_outlined, size: 18, color: Colors.grey),

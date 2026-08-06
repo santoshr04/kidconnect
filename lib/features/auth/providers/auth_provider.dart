@@ -10,6 +10,7 @@ class AuthState {
   final bool isAuthenticated;
   final bool isLoading;
   final String? selectedChildId;
+  final List<Map<String, String>> allChildren; // [{id, name}] for child selection
   final bool usingMockData;
 
   const AuthState({
@@ -17,6 +18,7 @@ class AuthState {
     this.isAuthenticated = false,
     this.isLoading = false,
     this.selectedChildId,
+    this.allChildren = const [],
     this.usingMockData = false,
   });
 
@@ -25,6 +27,7 @@ class AuthState {
     bool? isAuthenticated,
     bool? isLoading,
     String? selectedChildId,
+    List<Map<String, String>>? allChildren,
     bool? usingMockData,
   }) {
     return AuthState(
@@ -32,6 +35,7 @@ class AuthState {
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       isLoading: isLoading ?? this.isLoading,
       selectedChildId: selectedChildId ?? this.selectedChildId,
+      allChildren: allChildren ?? this.allChildren,
       usingMockData: usingMockData ?? this.usingMockData,
     );
   }
@@ -161,16 +165,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
         }
 
         if (firebaseUser != null) {
-          // Look up the actual child ID (not the parent doc ID)
-          String? childId;
+          // Fetch ALL children for this parent
+          List<Map<String, String>> allChildren = [];
+          String? firstChildId;
           try {
             final childSnap = await FirebaseFirestore.instance
                 .collection('children')
                 .where('parentId', isEqualTo: parentDocId)
-                .limit(1)
                 .get();
-            if (childSnap.docs.isNotEmpty) {
-              childId = childSnap.docs.first.id;
+            for (final doc in childSnap.docs) {
+              final childName = doc.data()['name'] as String? ?? 'Child';
+              allChildren.add({'id': doc.id, 'name': childName});
+              firstChildId ??= doc.id;
             }
           } catch (_) {}
 
@@ -188,7 +194,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
             currentUser: userModel,
             isAuthenticated: true,
             isLoading: false,
-            selectedChildId: childId,
+            selectedChildId: firstChildId,
+            allChildren: allChildren,
             usingMockData: false,
           );
           return true;
@@ -198,42 +205,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Firestore lookup failed — fall through to mock
     }
 
-    // 2) Fall back to mock data
-    final parent = MockData.getParentByPhone(phone);
-    if (parent == null) {
-      state = state.copyWith(isLoading: false);
-      return false;
-    }
-
-    final firebaseUser = await AuthRepository.signInWithEmail(
-      parent.email,
-      'password123',
-      UserRole.parent,
-    );
-
-    final children = MockData.getChildrenForParent(parent.id);
-    final defaultChildId = children.isNotEmpty ? children.first.id : null;
-
-    if (firebaseUser != null) {
-      state = AuthState(
-        currentUser: firebaseUser,
-        isAuthenticated: true,
-        isLoading: false,
-        selectedChildId: defaultChildId,
-        usingMockData: false,
-      );
-      return true;
-    }
-
-    await Future.delayed(const Duration(milliseconds: 800));
-    state = AuthState(
-      currentUser: parent,
-      isAuthenticated: true,
-      isLoading: false,
-      selectedChildId: defaultChildId,
-      usingMockData: true,
-    );
-    return true;
+    // 2) No fallback — phone not found in Firestore
+    state = state.copyWith(isLoading: false);
+    return false;
   }
 
   void selectChild(String childId) {

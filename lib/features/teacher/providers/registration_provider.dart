@@ -178,6 +178,40 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       final phoneDigits = state.mobileNumber.replaceAll(RegExp(r'\D'), '');
       final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
 
+      // ── Phone exists? Add children under existing parent ──
+      String? existingParentId;
+      if (_editingParentId == null) {
+        final phoneSnap = await FirebaseFirestore.instance
+            .collection('parents')
+            .where('phone', isEqualTo: phoneDigits)
+            .limit(1)
+            .get();
+        if (phoneSnap.docs.isNotEmpty) {
+          existingParentId = phoneSnap.docs.first.id;
+          
+          // Check for duplicate child name under this parent
+          final allChildrenSnap = await FirebaseFirestore.instance
+              .collection('children')
+              .where('parentId', isEqualTo: existingParentId)
+              .get();
+          final existingNames = allChildrenSnap.docs
+              .map((d) => (d.data()['name'] as String? ?? '').trim().toLowerCase())
+              .toSet();
+          
+          for (final child in state.children) {
+            if (child.name.trim().isEmpty) continue;
+            if (existingNames.contains(child.name.trim().toLowerCase())) {
+              state = state.copyWith(
+                isSubmitting: false,
+                errorMessage:
+                    '"${child.name.trim()}" is already registered under this phone number',
+              );
+              return false;
+            }
+          }
+        }
+      }
+
       if (_editingParentId != null) {
         // ── EDIT MODE: Update existing records ──
         final parentId = _editingParentId!;
@@ -205,24 +239,32 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
         _editingParentId = null;
         _editingChildIds = [];
       } else {
-        // ── CREATE MODE: New family — Firestore only ──
-        final uid = 'parent_${DateTime.now().millisecondsSinceEpoch}';
+        // ── CREATE MODE: New child(ren) under new or existing parent ──
+        final uid = existingParentId ?? 'parent_${DateTime.now().millisecondsSinceEpoch}';
 
-        await FirebaseFirestore.instance.collection('parents').doc(uid).set({
-          'name': state.parentName,
-          'phone': phoneDigits,
-          'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
-          'email': '$phoneDigits@kidconnect.internal',
-          'otp': otp,
-          'status': 'pending_completion',
-          'createdBy': 'teacher',
-          'createdAt': FieldValue.serverTimestamp(),
-          'role': 'parent',
-        });
+        // Only create parent document if it's a truly new parent
+        if (existingParentId == null) {
+          await FirebaseFirestore.instance.collection('parents').doc(uid).set({
+            'name': state.parentName,
+            'phone': phoneDigits,
+            'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
+            'email': '$phoneDigits@kidconnect.internal',
+            'otp': otp,
+            'status': 'pending_completion',
+            'createdBy': 'teacher',
+            'createdAt': FieldValue.serverTimestamp(),
+            'role': 'parent',
+          });
+        }
 
+        // Add new child(ren) under this parent (existing or new)
         for (int i = 0; i < state.children.length; i++) {
           final child = state.children[i];
-          await _registerChild(uid, child, i);
+          // For existing parent, use a new child index (append after existing children)
+          final childIndex = existingParentId != null
+              ? i + (await _getExistingChildCount(uid))
+              : i;
+          await _registerChild(uid, child, childIndex, phoneDigits);
         }
 
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -247,7 +289,7 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
     }
   }
 
-  Future<void> _registerChild(String parentId, StudentEntry child, int index) async {
+  Future<void> _registerChild(String parentId, StudentEntry child, int index, String phoneDigits) async {
     final classId = child.className.toLowerCase();
     final childId = 'child_${parentId}_$index';
 
@@ -266,6 +308,7 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
 
     await FirebaseFirestore.instance.collection('children').doc(childId).set({
       'name': child.name,
+      'phoneName': '${phoneDigits}_${child.name.trim().toLowerCase()}', // for uniqueness lookup
       'classId': classId,
       'className': child.className,
       'section': child.section,
@@ -324,6 +367,19 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       } catch (e) {
         debugPrint('⚠️ Face re-enrollment failed for $childId (non-critical): $e');
       }
+    }
+  }
+
+  /// Returns the number of children already registered under a parent.
+  Future<int> _getExistingChildCount(String parentId) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('children')
+          .where('parentId', isEqualTo: parentId)
+          .get();
+      return snap.docs.length;
+    } catch (_) {
+      return 0;
     }
   }
 
