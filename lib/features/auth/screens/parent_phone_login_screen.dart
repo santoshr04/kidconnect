@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/auth_provider.dart';
 
@@ -61,12 +62,7 @@ class _ParentPhoneLoginScreenState
 
     if (!mounted) return;
 
-    if (success) {
-      final authState = ref.read(authProvider);
-      if (authState.allChildren.length > 1) {
-        _showChildSelectionDialog(authState.allChildren);
-      }
-    } else {
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Phone number not found'),
@@ -76,38 +72,19 @@ class _ParentPhoneLoginScreenState
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
+      return;
     }
-  }
-
-  void _showChildSelectionDialog(List<Map<String, String>> children) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Select Child',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: children.map((child) => ListTile(
-            leading: CircleAvatar(
-              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: Text(
-                child['name']!.isNotEmpty ? child['name']![0].toUpperCase() : '?',
-                style: GoogleFonts.nunito(
-                    fontWeight: FontWeight.w700, color: AppColors.primary),
-              ),
-            ),
-            title: Text(child['name']!,
-                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-            onTap: () {
-              Navigator.pop(ctx);
-              ref.read(authProvider.notifier).selectChild(child['id']!);
-            },
-          )).toList(),
-        ),
-      ),
-    );
+    // Navigate based on child count
+    if (!mounted) return;
+    final authState = ref.read(authProvider);
+    final childCount = authState.allChildren.length;
+    if (childCount > 1) {
+      context.go('/parent/select-child');
+    } else if (childCount == 1) {
+      final childId = authState.allChildren.first['id']!;
+      ref.read(authProvider.notifier).selectChild(childId);
+      context.go('/parent/complete-profile');
+    }
   }
 
   @override

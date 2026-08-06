@@ -118,91 +118,95 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> loginParentByPhone(String phone) async {
     state = state.copyWith(isLoading: true);
 
-    // 1) Try Firestore — look up parent by phone
+    // 1) Try Firestore — look up parent by phone (client-side filter, no index)
     try {
-      final snap = await FirebaseFirestore.instance
+      final allParentsSnap = await FirebaseFirestore.instance
           .collection('parents')
-          .where('phone', isEqualTo: phone)
-          .limit(1)
           .get();
-
-      if (snap.docs.isNotEmpty) {
-        final data = snap.docs.first.data();
-        final parentDocId = snap.docs.first.id;
-
-        // Use stable parent doc ID for email (phone-agnostic)
-        final email = '$parentDocId@kidconnect.internal';
-
-        // OTP from stored document, or fallback to computed from phone
-        final storedOtp = data['otp'] as String?;
-        final otp = storedOtp ?? (100000 + (phone.hashCode % 900000)).toString();
-        final password = 'KC@$otp';
-
-        // Try to sign in first (existing account)
-        UserModel? firebaseUser;
-        firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
-
-        if (firebaseUser == null) {
-          // Account doesn't exist yet — create it (first login)
-          final uid = await AuthRepository.createAccount(email, password);
-          if (uid != null) {
-            // Sign in with the newly created account
-            firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
-          }
-        }
-
-        if (firebaseUser == null) {
-          // Still failing? Try with the old-style phone-based email as fallback
-          final oldEmail = '$phone@kidconnect.internal';
-          firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
-          if (firebaseUser == null) {
-            // Create with phone-based email as last resort
-            final uid = await AuthRepository.createAccount(oldEmail, password);
-            if (uid != null) {
-              firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
-            }
-          }
-        }
-
-        if (firebaseUser != null) {
-          // Fetch ALL children for this parent
-          List<Map<String, String>> allChildren = [];
-          String? firstChildId;
-          try {
-            final childSnap = await FirebaseFirestore.instance
-                .collection('children')
-                .where('parentId', isEqualTo: parentDocId)
-                .get();
-            for (final doc in childSnap.docs) {
-              final childName = doc.data()['name'] as String? ?? 'Child';
-              allChildren.add({'id': doc.id, 'name': childName});
-              firstChildId ??= doc.id;
-            }
-          } catch (_) {}
-
-          final userModel = UserModel(
-            id: parentDocId,
-            name: data['name'] as String? ?? 'Parent',
-            email: email,
-            role: UserRole.parent,
-            phone: phone,
-            status: data['status'] == 'active' ? ParentStatus.active : ParentStatus.pendingCompletion,
-            createdAt: DateTime.now(),
+      var foundDoc = allParentsSnap.docs.cast<DocumentSnapshot?>().firstWhere(
+            (d) => ((d!.data() as Map<String, dynamic>?)!['phone'] as String? ?? '') == phone,
+            orElse: () => null,
           );
+      if (foundDoc == null) {
+        state = state.copyWith(isLoading: false);
+        return false;
+      }
 
-          state = AuthState(
-            currentUser: userModel,
-            isAuthenticated: true,
-            isLoading: false,
-            selectedChildId: firstChildId,
-            allChildren: allChildren,
-            usingMockData: false,
-          );
-          return true;
+      final data = foundDoc.data()! as Map<String, dynamic>;
+      final parentDocId = foundDoc.id;
+
+      // Use stable parent doc ID for email (phone-agnostic)
+      final email = '$parentDocId@kidconnect.internal';
+
+      // OTP from stored document, or fallback to computed from phone
+      final storedOtp = data['otp'] as String?;
+      final otp = storedOtp ?? (100000 + (phone.hashCode % 900000)).toString();
+      final password = 'KC@$otp';
+
+      // Try to sign in first (existing account)
+      UserModel? firebaseUser;
+      firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
+
+      if (firebaseUser == null) {
+        // Account doesn't exist yet — create it (first login)
+        final uid = await AuthRepository.createAccount(email, password);
+        if (uid != null) {
+          // Sign in with the newly created account
+          firebaseUser = await AuthRepository.signInWithEmail(email, password, UserRole.parent);
         }
       }
+
+      if (firebaseUser == null) {
+        // Still failing? Try with the old-style phone-based email as fallback
+        final oldEmail = '$phone@kidconnect.internal';
+        firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
+        if (firebaseUser == null) {
+          // Create with phone-based email as last resort
+          final uid = await AuthRepository.createAccount(oldEmail, password);
+          if (uid != null) {
+            firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
+          }
+        }
+      }
+
+      if (firebaseUser != null) {
+        // Fetch ALL children for this parent
+        List<Map<String, String>> allChildren = [];
+        String? firstChildId;
+        try {
+          final childSnap = await FirebaseFirestore.instance
+              .collection('children')
+              .where('parentId', isEqualTo: parentDocId)
+              .get();
+          for (final doc in childSnap.docs) {
+            final childName = doc.data()['name'] as String? ?? 'Child';
+            allChildren.add({'id': doc.id, 'name': childName});
+            firstChildId ??= doc.id;
+          }
+        } catch (_) {}
+
+        final userModel = UserModel(
+          id: parentDocId,
+          name: data['name'] as String? ?? 'Parent',
+          email: email,
+          role: UserRole.parent,
+          phone: phone,
+          status: data['status'] == 'active' ? ParentStatus.active : ParentStatus.pendingCompletion,
+          createdAt: DateTime.now(),
+        );
+
+        state = AuthState(
+          currentUser: userModel,
+          isAuthenticated: true,
+          isLoading: false,
+          selectedChildId: firstChildId,
+          allChildren: allChildren,
+          usingMockData: false,
+        );
+        return true;
+      }
     } catch (_) {
-      // Firestore lookup failed — fall through to mock
+      // Firestore lookup failed
     }
 
     // 2) No fallback — phone not found in Firestore

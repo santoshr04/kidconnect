@@ -9,6 +9,7 @@ import '../features/auth/screens/parent_phone_login_screen.dart';
 import '../features/parent/screens/gallery_screen.dart';
 import '../features/parent/screens/parent_photo_viewer_screen.dart';
 import '../features/parent/screens/face_enrollment_screen.dart';
+import '../features/parent/screens/parent_child_selection_screen.dart';
 import '../features/parent/screens/parent_profile_screen.dart';
 import '../features/teacher/screens/upload_photos_screen.dart';
 import '../features/teacher/screens/teacher_gallery_screen.dart';
@@ -107,6 +108,17 @@ final routerProvider = Provider<GoRouter>((ref) {
               )),
               child: child,
             );
+          },
+        ),
+      ),
+
+      // ─── Child Selection (standalone, no bottom nav) ──
+      GoRoute(
+        path: '/parent/select-child',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          child: const ParentChildSelectionScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
           },
         ),
       ),

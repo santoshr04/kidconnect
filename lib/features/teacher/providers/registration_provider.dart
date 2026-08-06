@@ -178,23 +178,29 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
       final phoneDigits = state.mobileNumber.replaceAll(RegExp(r'\D'), '');
       final otp = (100000 + (phoneDigits.hashCode % 900000)).toString();
 
-      // ── Phone exists? Add children under existing parent ──
+      // ── Phone exists? Find existing parent (client-side filter, no index needed) ──
       String? existingParentId;
       if (_editingParentId == null) {
-        final phoneSnap = await FirebaseFirestore.instance
+        // Fetch all parents and filter by phone client-side
+        final allParentsSnap = await FirebaseFirestore.instance
             .collection('parents')
-            .where('phone', isEqualTo: phoneDigits)
-            .limit(1)
             .get();
-        if (phoneSnap.docs.isNotEmpty) {
-          existingParentId = phoneSnap.docs.first.id;
-          
+        String? foundPhone;
+        for (final doc in allParentsSnap.docs) {
+          if ((doc.data()['phone'] as String? ?? '') == phoneDigits) {
+            existingParentId = doc.id;
+            foundPhone = phoneDigits;
+            break;
+          }
+        }
+
+        if (existingParentId != null) {
           // Check for duplicate child name under this parent
           final allChildrenSnap = await FirebaseFirestore.instance
               .collection('children')
-              .where('parentId', isEqualTo: existingParentId)
               .get();
           final existingNames = allChildrenSnap.docs
+              .where((d) => (d.data()['parentId'] as String? ?? '') == existingParentId)
               .map((d) => (d.data()['name'] as String? ?? '').trim().toLowerCase())
               .toSet();
           
