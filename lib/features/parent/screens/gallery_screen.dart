@@ -70,8 +70,16 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
       });
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        if (auth.allChildren.length > 1) {
+          context.go('/parent/select-child');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
       body: NestedScrollView(
         headerSliverBuilder: (ctx, inner) => [
           SliverAppBar(
@@ -152,7 +160,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
           ],
         ),
       ),
-    );
+    ));
   }
 
   /// Child feed tab — shows training prompt if not enrolled, else shows tagged photos.

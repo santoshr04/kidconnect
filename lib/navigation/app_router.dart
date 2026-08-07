@@ -73,8 +73,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null; // Already there
         }
 
-        // If they are on a login route or select child (and already selected one), send them to parent dashboard
-        if (isLoginRoute || state.matchedLocation == '/parent/select-child') {
+        // If they are on a login route, send them to parent dashboard
+        if (isLoginRoute) {
           return '/parent';
         }
       } else if (authState.isTeacher) {
