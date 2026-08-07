@@ -86,6 +86,13 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen>
                   style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontSize: 22)),
               centerTitle: false,
             ),
+            leading: auth.allChildren.length > 1
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+                    tooltip: 'Switch Child',
+                    onPressed: () => context.go('/parent/select-child'),
+                  )
+                : null,
             actions: [
               if (!_checkingEnrollment && !_isEnrolled)
                 Padding(

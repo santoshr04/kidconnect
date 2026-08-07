@@ -239,12 +239,18 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
             style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background,
         elevation: 0,
-        leading: widget.isViewMode
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-                onPressed: () => context.pop(),
-              )
-            : null,
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+            onPressed: () {
+              if (_allChildren.length > 1) {
+                context.go('/parent/select-child');
+              } else if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/parent/gallery');
+              }
+            },
+          ),
         actions: [
           if (!widget.isViewMode)
             TextButton(

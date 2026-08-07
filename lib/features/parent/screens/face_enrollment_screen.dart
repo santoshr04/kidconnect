@@ -256,8 +256,16 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
         elevation: 0,
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded),
-            onPressed: () =>
-                context.canPop() ? context.pop() : context.go('/parent/gallery')),
+            onPressed: () {
+              final auth = ref.read(authProvider);
+              if (auth.allChildren.length > 1) {
+                context.go('/parent/select-child');
+              } else if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/parent/gallery');
+              }
+            }),
         title: Text('Face Setup — $_childName',
             style: GoogleFonts.nunito(
                 fontWeight: FontWeight.w800, color: AppColors.textPrimary)),

@@ -76,7 +76,7 @@ def validate_embedding_quality(embedding, bbox, img_shape):
     face_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
     img_area = img_shape[0] * img_shape[1]
     face_ratio = face_area / img_area
-    if face_ratio < 0.03:
+    if face_ratio < 0.015:  # Accept smaller/farther faces (classroom-style photos)
         return False
     if np.any(np.isnan(embedding)):
         return False
@@ -503,7 +503,7 @@ def validate_face():
     face_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
     img_area = img.shape[0] * img.shape[1]
     face_ratio = face_area / img_area
-    if face_ratio < 0.05:
+    if face_ratio < 0.02:  # Accept smaller faces (classroom-style photos)
         return jsonify({'valid': False, 'error': 'Face is too small in the photo. Please take a closer photo of the child.', 'face_count': 1})
     if embedding is not None and np.any(np.isnan(embedding)):
         return jsonify({'valid': False, 'error': 'Face quality too low. Please retake with better lighting.', 'face_count': 1})
