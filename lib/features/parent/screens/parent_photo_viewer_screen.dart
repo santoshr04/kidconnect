@@ -257,18 +257,21 @@ class _ParentPhotoViewerScreenState
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.auto_fix_high,
-                          color: Color(0xFF64B5F6), size: 22),
-                      tooltip: 'Re-tag Photo',
-                      onPressed: _retagCurrentPhoto,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline,
-                          color: Colors.redAccent, size: 22),
-                      tooltip: 'Delete Photo',
-                      onPressed: _deleteCurrentPhoto,
-                    ),
+                    // Only teachers see re-tag and delete options
+                    if (!ref.read(authProvider).isParent) ...[
+                      IconButton(
+                        icon: const Icon(Icons.auto_fix_high,
+                            color: Color(0xFF64B5F6), size: 22),
+                        tooltip: 'Re-tag Photo',
+                        onPressed: _retagCurrentPhoto,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.redAccent, size: 22),
+                        tooltip: 'Delete Photo',
+                        onPressed: _deleteCurrentPhoto,
+                      ),
+                    ],
                   ],
                 ),
               ),
