@@ -39,6 +39,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/role-select';
       }
 
+      // After parent phone login, navigate based on child count
+      if (isAuthenticated && isParentLoginRoute && authState.isParent) {
+        final childCount = authState.allChildren.length;
+        if (childCount > 1) return '/parent/select-child';
+        if (childCount == 1) return '/parent/complete-profile';
+        return null; // 0 children — stay on login screen
+      }
+
       if (isAuthenticated && isLoginRoute) {
         if (authState.isParent) {
           final status = authState.currentUser?.status;
