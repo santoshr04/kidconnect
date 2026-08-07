@@ -157,7 +157,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         'status': 'active',
       });
 
-      // Save medical data to the current child
+      // Save medical data and mark child as active
       if (_selectedChildId != null && _selectedChildId!.isNotEmpty) {
         await FirebaseFirestore.instance
             .collection('children')
@@ -167,6 +167,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           'allergies': _allergiesCtrl.text.trim(),
           'medicalInfo': _medicalCtrl.text.trim(),
           'emergencyContact': _emergencyCtrl.text.trim(),
+          'status': 'active',
         });
       }
 
