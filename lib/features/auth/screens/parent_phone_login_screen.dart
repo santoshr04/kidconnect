@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -78,12 +79,33 @@ class _ParentPhoneLoginScreenState
     if (!mounted) return;
     final authState = ref.read(authProvider);
     final childCount = authState.allChildren.length;
+    debugPrint('🚀 _handleLogin: childCount=$childCount, isAuthenticated=${authState.isAuthenticated}');
+    for (final c in authState.allChildren) {
+      debugPrint('🚀   child: id=${c['id']} name=${c['name']}');
+    }
     if (childCount > 1) {
-      context.go('/parent/select-child');
+      debugPrint('🚀 _handleLogin: navigating to /parent/select-child');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/parent/select-child');
+      });
     } else if (childCount == 1) {
+      debugPrint('🚀 _handleLogin: navigating to /parent/complete-profile');
       final childId = authState.allChildren.first['id']!;
       ref.read(authProvider.notifier).selectChild(childId);
-      context.go('/parent/complete-profile');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/parent/complete-profile');
+      });
+    } else {
+      debugPrint('🚀 _handleLogin: no children, showing error snackbar');
+      // No children found — show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No children registered under this phone number'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
     }
   }
 

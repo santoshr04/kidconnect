@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/user_model.dart';
@@ -170,20 +171,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       if (firebaseUser != null) {
-        // Fetch ALL children for this parent
+        // Fetch ALL children — client-side filter, no index needed
         List<Map<String, String>> allChildren = [];
         String? firstChildId;
         try {
-          final childSnap = await FirebaseFirestore.instance
+          final allChildrenSnap = await FirebaseFirestore.instance
               .collection('children')
-              .where('parentId', isEqualTo: parentDocId)
               .get();
-          for (final doc in childSnap.docs) {
-            final childName = doc.data()['name'] as String? ?? 'Child';
-            allChildren.add({'id': doc.id, 'name': childName});
-            firstChildId ??= doc.id;
+          debugPrint('🔍 loginParentByPhone: fetched ${allChildrenSnap.docs.length} total children docs');
+          debugPrint('🔍 loginParentByPhone: looking for parentDocId=$parentDocId');
+          for (final doc in allChildrenSnap.docs) {
+            final childData = doc.data() as Map<String, dynamic>?;
+            final childParentId = childData?['parentId'] as String? ?? '';
+            debugPrint('🔍   child doc.id=${doc.id} name=${childData?['name']} parentId=$childParentId');
+            if (childParentId == parentDocId) {
+              final childName = childData?['name'] as String? ?? 'Child';
+              allChildren.add({'id': doc.id, 'name': childName});
+              firstChildId ??= doc.id;
+            }
           }
-        } catch (_) {}
+          debugPrint('🔍 loginParentByPhone: matched ${allChildren.length} children for this parent');
+        } catch (e) {
+          debugPrint('🔍 loginParentByPhone: children fetch error: $e');
+        }
 
         final userModel = UserModel(
           id: parentDocId,
