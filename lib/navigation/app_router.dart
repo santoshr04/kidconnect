@@ -21,41 +21,67 @@ import '../data/models/user_model.dart';
 import '../data/models/photo_model.dart';
 import 'bottom_nav_shell.dart';
 
+/// Listenable to notify GoRouter of auth state changes
+class RouterNotifier extends ChangeNotifier {
+  final Ref _ref;
+  RouterNotifier(this._ref) {
+    _ref.listen<AuthState>(
+      authProvider,
+      (_, __) => notifyListeners(),
+    );
+  }
+}
+
+final routerNotifierProvider = Provider((ref) => RouterNotifier(ref));
+
 /// App router configuration using GoRouter
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
+    refreshListenable: notifier,
     initialLocation: '/',
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final isAuthenticated = authState.isAuthenticated;
       final isLoginRoute = state.matchedLocation == '/login' ||
           state.matchedLocation == '/role-select' ||
-          state.matchedLocation == '/';
+          state.matchedLocation == '/' ||
+          state.matchedLocation == '/parent-login';
 
-      final isParentLoginRoute = state.matchedLocation == '/parent-login';
-
-      if (!isAuthenticated && !isLoginRoute && !isParentLoginRoute) {
-        return '/role-select';
+      if (!isAuthenticated) {
+        if (!isLoginRoute) {
+          return '/role-select';
+        }
+        return null;
       }
 
-      // After parent phone login, navigate based on child count
-      if (isAuthenticated && isParentLoginRoute && authState.isParent) {
-        final childCount = authState.allChildren.length;
-        if (childCount > 1) return '/parent/select-child';
-        if (childCount == 1) return '/parent/complete-profile';
-        return null; // 0 children — stay on login screen
-      }
+      // If authenticated
+      if (authState.isParent) {
+        if (authState.allChildren.length > 1 && authState.selectedChildId == null) {
+          if (state.matchedLocation != '/parent/select-child') {
+            return '/parent/select-child';
+          }
+          return null; // Already there
+        }
 
-      if (isAuthenticated && isLoginRoute) {
-        if (authState.isParent) {
-          final status = authState.currentUser?.status;
-          if (status == ParentStatus.pendingCompletion) {
+        final status = authState.currentUser?.status;
+        if (status == ParentStatus.pendingCompletion) {
+          if (state.matchedLocation != '/parent/complete-profile') {
             return '/parent/complete-profile';
           }
+          return null; // Already there
+        }
+
+        // If they are on a login route or select child (and already selected one), send them to parent dashboard
+        if (isLoginRoute || state.matchedLocation == '/parent/select-child') {
           return '/parent';
         }
-        return '/teacher';
+      } else if (authState.isTeacher) {
+        // Teacher
+        if (isLoginRoute) {
+          return '/teacher';
+        }
       }
 
       return null;

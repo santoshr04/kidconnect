@@ -61,7 +61,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       String? defaultChildId;
       if (role == UserRole.parent) {
         final children = MockData.getChildrenForParent(firebaseUser.id);
-        if (children.isNotEmpty) defaultChildId = children.first.id;
+        if (children.isNotEmpty) {
+          defaultChildId = children.length == 1 ? children.first.id : null;
+        }
       }
 
       state = AuthState(
@@ -95,7 +97,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       String? defaultChildId;
       if (role == UserRole.parent) {
         final children = MockData.getChildrenForParent(user.id);
-        if (children.isNotEmpty) defaultChildId = children.first.id;
+        if (children.isNotEmpty) {
+          defaultChildId = children.length == 1 ? children.first.id : null;
+        }
       }
 
       state = AuthState(
@@ -209,7 +213,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           currentUser: userModel,
           isAuthenticated: true,
           isLoading: false,
-          selectedChildId: firstChildId,
+          selectedChildId: allChildren.length == 1 ? firstChildId : null,
           allChildren: allChildren,
           usingMockData: false,
         );
