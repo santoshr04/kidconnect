@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/insight_face_service.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -686,8 +688,10 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
     final picked =
         await _picker.pickMultiImage(imageQuality: 90, limit: remaining);
     if (picked != null) {
+      setState(() => _statusMessage = 'Cropping faces...');
       for (final x in picked) {
-        _photos.add(_EnrollmentPhoto(file: File(x.path)));
+        final cropped = await _cropFaceFromPhoto(File(x.path));
+        _photos.add(cropped);
       }
       setState(() {});
       _validateAllPhotos();
@@ -700,9 +704,80 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
     final picked =
         await _picker.pickImage(source: ImageSource.camera, imageQuality: 90);
     if (picked != null) {
-      _photos.add(_EnrollmentPhoto(file: File(picked.path)));
+      setState(() => _statusMessage = 'Cropping face...');
+      final cropped = await _cropFaceFromPhoto(File(picked.path));
+      _photos.add(cropped);
       setState(() {});
       _validateAllPhotos();
+    }
+  }
+
+  /// Detects the largest face in the photo and crops around it with padding.
+  /// If no face is found, returns the original photo.
+  Future<_EnrollmentPhoto> _cropFaceFromPhoto(File originalFile) async {
+    try {
+      final inputImage = InputImage.fromFilePath(originalFile.path);
+      final faceDetector = FaceDetector(
+        options: FaceDetectorOptions(
+          enableClassification: false,
+          enableLandmarks: false,
+          enableTracking: false,
+        ),
+      );
+      final faces = await faceDetector.processImage(inputImage);
+      faceDetector.close();
+
+      if (faces.isEmpty) {
+        // No face detected — use original
+        return _EnrollmentPhoto(file: originalFile);
+      }
+
+      final bytes = await originalFile.readAsBytes();
+      final image = img.decodeImage(bytes);
+      if (image == null) return _EnrollmentPhoto(file: originalFile);
+
+      // Find the largest face
+      double maxArea = 0;
+      img.Rectangle faceRect = img.Rectangle(0, 0, image.width, image.height);
+      for (final face in faces) {
+        final rect = face.boundingBox;
+        final area = (rect.right - rect.left) * (rect.bottom - rect.top);
+        if (area > maxArea) {
+          maxArea = area;
+          faceRect = img.Rectangle(
+            rect.left.toInt().clamp(0, image.width),
+            rect.top.toInt().clamp(0, image.height),
+            rect.right.toInt().clamp(0, image.width),
+            rect.bottom.toInt().clamp(0, image.height),
+          );
+        }
+      }
+
+      // Add 30% padding around the face
+      final padW = ((faceRect.right - faceRect.left) * 0.3).round();
+      final padH = ((faceRect.bottom - faceRect.top) * 0.3).round();
+
+      final cropLeft = (faceRect.left - padW).clamp(0, image.width);
+      final cropTop = (faceRect.top - padH).clamp(0, image.height);
+      final cropRight = (faceRect.right + padW).clamp(0, image.width);
+      final cropBottom = (faceRect.bottom + padH).clamp(0, image.height);
+
+      final cropped = img.copyCrop(image,
+          x: cropLeft,
+          y: cropTop,
+          width: cropRight - cropLeft,
+          height: cropBottom - cropTop);
+
+      // Save cropped image to temp file
+      final dir = await getTemporaryDirectory();
+      final croppedPath =
+          '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final croppedFile = File(croppedPath);
+      await croppedFile.writeAsBytes(img.encodeJpg(cropped, quality: 90));
+
+      return _EnrollmentPhoto(file: croppedFile);
+    } catch (_) {
+      return _EnrollmentPhoto(file: originalFile);
     }
   }
 
