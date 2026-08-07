@@ -31,9 +31,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   Map<String, dynamic>? _childData;
   String? _selectedChildId;
 
-  List<Map<String, String>> _allChildren = [];
-  int _selectedChildIndex = 0;
-
   @override
   void initState() {
     super.initState();
@@ -57,14 +54,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     final auth = ref.read(authProvider);
     final parentId = auth.currentUser?.id;
     _selectedChildId = auth.selectedChildId;
-    _allChildren = auth.allChildren;
     if (parentId == null) return;
-
-    // Determine initial child index from selectedChildId
-    if (_selectedChildId != null) {
-      final idx = _allChildren.indexWhere((c) => c['id'] == _selectedChildId);
-      if (idx >= 0) _selectedChildIndex = idx;
-    }
 
     try {
       // Load parent data
@@ -81,13 +71,12 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           _emailCtrl.text = data['email'] ?? '';
         }
         _addressCtrl.text = data['address'] ?? '';
-        // Auto-populate father name from parent name (teacher-entered)
         _fatherNameCtrl.text =
             data['fatherName'] as String? ?? (data['name'] as String? ?? '');
         _motherNameCtrl.text = data['motherName'] ?? '';
       }
 
-      // Load the selected child
+      // Load the single selected child
       await _loadChildData(_selectedChildId);
     } catch (_) {}
   }
@@ -112,32 +101,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     } catch (_) {}
   }
 
-  void _switchChild(int index) {
-    if (index >= _allChildren.length) return;
-    setState(() {
-      _selectedChildIndex = index;
-      _selectedChildId = _allChildren[index]['id'];
-    });
-    // Save current child data, then load new child
-    _saveChildDataSilently();
-    _loadChildData(_selectedChildId);
-  }
-
-  Future<void> _saveChildDataSilently() async {
-    if (_selectedChildId == null || _selectedChildId!.isEmpty) return;
-    try {
-      await FirebaseFirestore.instance
-          .collection('children')
-          .doc(_selectedChildId)
-          .update({
-        'bloodGroup': _bloodGroupCtrl.text.trim(),
-        'allergies': _allergiesCtrl.text.trim(),
-        'medicalInfo': _medicalCtrl.text.trim(),
-        'emergencyContact': _emergencyCtrl.text.trim(),
-      });
-    } catch (_) {}
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -148,7 +111,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     if (parentId == null) return;
 
     try {
-      // Save parent-level fields
       await FirebaseFirestore.instance.collection('parents').doc(parentId).update({
         'email': _emailCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
@@ -157,7 +119,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         'status': 'active',
       });
 
-      // Save medical data and mark child as active
       if (_selectedChildId != null && _selectedChildId!.isNotEmpty) {
         await FirebaseFirestore.instance
             .collection('children')
@@ -175,7 +136,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         setState(() => _saving = false);
 
         if (widget.isViewMode) {
-          // Editing from view mode — just go back to view
           setState(() => _editing = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -186,7 +146,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
             ),
           );
         } else {
-          // Initial setup — navigate to face enrollment
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text(
@@ -223,7 +182,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     final section = _childData?['section'] as String?;
     final classDisplay =
         '$className${section != null && section.isNotEmpty ? ' · Section $section' : ''}';
-    final showChildSwitcher = _allChildren.length > 1 && (isView || _editing || !widget.isViewMode);
 
     if (_parentData == null) {
       return Scaffold(
@@ -242,7 +200,8 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
             onPressed: () {
-              if (_allChildren.length > 1) {
+              final auth = ref.read(authProvider);
+              if (auth.allChildren.length > 1) {
                 context.go('/parent/select-child');
               } else if (context.canPop()) {
                 context.pop();
@@ -283,14 +242,13 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1) Child name & class (prominent header) + child switcher
-              _buildChildHeader(childName, classDisplay, showChildSwitcher),
-              if (showChildSwitcher) const SizedBox(height: 12),
+              // Child name & class
+              _buildChildHeader(childName, classDisplay),
               const SizedBox(height: 20),
-              // 2) Teacher-entered details (read-only)
+              // Teacher-entered details
               _buildTeacherDetailsCard(parentName, phone),
               const SizedBox(height: 24),
-              // 3) Parent-editable fields
+              // Parent-editable fields
               Text(
                   isView
                       ? 'Parent Details'
@@ -301,7 +259,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                       fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 16),
               isView ? _buildViewOnlyFields() : _buildEditableFields(),
-              // Save / Close buttons
               if (!isView) ...[
                 const SizedBox(height: 32),
                 SizedBox(
@@ -361,11 +318,8 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────
-  // 1) Child header — name at top, then class, with optional child switcher
-  // ──────────────────────────────────────────────────────────────────────
-  Widget _buildChildHeader(
-      String childName, String classDisplay, bool showChildSwitcher) {
+  // ─── Child header — name at top, then class ───────
+  Widget _buildChildHeader(String childName, String classDisplay) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -376,120 +330,65 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
       color: AppColors.primary.withValues(alpha: 0.06),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.parentGradient,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      childName.isNotEmpty ? childName[0].toUpperCase() : '🧒',
-                      style: GoogleFonts.nunito(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        childName,
-                        style: GoogleFonts.nunito(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          classDisplay.isNotEmpty
-                              ? classDisplay
-                              : 'Class info pending',
-                          style: GoogleFonts.nunito(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (showChildSwitcher) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border, width: 1),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
-                    value: _selectedChildIndex,
-                    isExpanded: true,
-                    icon: const Icon(Icons.swap_vert,
-                        color: AppColors.primary, size: 20),
-                    style: GoogleFonts.nunito(
-                        color: AppColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600),
-                    items: List.generate(_allChildren.length, (i) {
-                      return DropdownMenuItem(
-                        value: i,
-                        child: Row(children: [
-                          CircleAvatar(
-                            radius: 14,
-                            backgroundColor:
-                                AppColors.primary.withValues(alpha: 0.12),
-                            child: Text(
-                              (_allChildren[i]['name'] ?? '?')[0].toUpperCase(),
-                              style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(_allChildren[i]['name'] ?? 'Child'),
-                        ]),
-                      );
-                    }),
-                    onChanged: (val) {
-                      if (val != null) _switchChild(val);
-                    },
-                  ),
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: AppColors.parentGradient,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  childName.isNotEmpty ? childName[0].toUpperCase() : '🧒',
+                  style: GoogleFonts.nunito(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white),
                 ),
               ),
-            ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    childName,
+                    style: GoogleFonts.nunito(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      classDisplay.isNotEmpty
+                          ? classDisplay
+                          : 'Class info pending',
+                      style: GoogleFonts.nunito(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────
-  // 2) Teacher-entered details card (always read-only)
-  // ──────────────────────────────────────────────────────────────────────
+  // ─── Teacher-entered details card (always read-only) ──
   Widget _buildTeacherDetailsCard(String parentName, String phone) {
     return Card(
       elevation: 0,
@@ -521,6 +420,107 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
             ]),
             const SizedBox(height: 14),
             _teacherRow('Parent Name', parentName),
+            const SizedBox(height: 8),
+            _teacherRow('Phone Number', '+91 $phone'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── View-only fields ─────────────────────────────
+  Widget _buildViewOnlyFields() {
+    return Column(children: [
+      _viewOnlyRow('Email', _emailCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Father\'s Name', _fatherNameCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Mother\'s Name', _motherNameCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Address', _addressCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Blood Group', _bloodGroupCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Allergies', _allergiesCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Medical Info', _medicalCtrl.text),
+      const SizedBox(height: 12),
+      _viewOnlyRow('Emergency Contact', _emergencyCtrl.text),
+    ]);
+  }
+
+  Widget _viewOnlyRow(String label, String value) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+          width: 130,
+          child: Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary))),
+      Expanded(
+          child: Text(value.isNotEmpty ? value : '—',
+              style: GoogleFonts.nunito(
+                  fontSize: 14, fontWeight: FontWeight.w700))),
+    ]);
+  }
+
+  // ─── Editable fields ─────────────────────────────
+  Widget _buildEditableFields() {
+    return Column(children: [
+      _buildTextField('Father\'s Name *', _fatherNameCtrl, TextInputType.name,
+          'Father\'s full name'),
+      const SizedBox(height: 14),
+      _buildTextField('Mother\'s Name', _motherNameCtrl, TextInputType.name,
+          'Mother\'s full name'),
+      const SizedBox(height: 14),
+      _buildTextField('Email Address *', _emailCtrl,
+          TextInputType.emailAddress, 'Enter your email'),
+      const SizedBox(height: 14),
+      _buildTextField('Residential Address', _addressCtrl,
+          TextInputType.streetAddress, 'Your address'),
+      const SizedBox(height: 14),
+      _buildBloodGroupDropdown(),
+      const SizedBox(height: 14),
+      _buildTextField(
+          'Allergies', _allergiesCtrl, TextInputType.text, 'Any known allergies'),
+      const SizedBox(height: 14),
+      _buildTextField('Medical Information', _medicalCtrl, TextInputType.text,
+          'Medical conditions, medications'),
+      const SizedBox(height: 14),
+      _buildTextField('Emergency Contact', _emergencyCtrl,
+          TextInputType.phone, 'Emergency contact number'),
+    ]);
+  }
+
+  Widget _teacherRow(String label, String value) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+          width: 110,
+          child: Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                  fontWeight: FontWeight.w600))),
+      Expanded(
+          child: Text(value,
+              style: GoogleFonts.nunito(
+                  fontSize: 14, fontWeight: FontWeight.w700))),
+    ]);
+  }
+
+  Widget _buildTextField(String label, TextEditingController ctrl,
+      TextInputType keyboardType, String hint) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label,
+          style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary)),
+      const SizedBox(height: 6),
+      TextFormField(
+        controller: ctrl,
+        keyboardType: keyboardType,
             const SizedBox(height: 8),
             _teacherRow('Phone Number', '+91 $phone'),
           ],
@@ -670,7 +670,10 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                 .map((g) =>
                     DropdownMenuItem<String?>(value: g, child: Text(g)))
                 .toList(),
-            onChanged: (val) => setState(() => _bloodGroup = val),
+            onChanged: (val) => setState(() {
+              _bloodGroup = val;
+              _bloodGroupCtrl.text = val ?? '';
+            }),
           ),
         ),
       ),
