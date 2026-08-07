@@ -6,14 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 
-class _ChildMedicalData {
-  String bloodGroup;
-  String allergies;
-  String medicalInfo;
-  String emergencyContact;
-  _ChildMedicalData({this.bloodGroup = '', this.allergies = '', this.medicalInfo = '', this.emergencyContact = ''});
-}
-
 class ParentProfileScreen extends ConsumerStatefulWidget {
   final bool isViewMode;
   const ParentProfileScreen({super.key, this.isViewMode = false});
@@ -35,10 +27,12 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   String? _bloodGroup;
   bool _saving = false;
   bool _editing = false;
-  int _selectedChildIndex = 0;
   Map<String, dynamic>? _parentData;
-  List<Map<String, dynamic>> _children = [];
-  final Map<String, _ChildMedicalData> _childMedical = {};
+  Map<String, dynamic>? _childData;
+  String? _selectedChildId;
+
+  List<Map<String, String>> _allChildren = [];
+  int _selectedChildIndex = 0;
 
   @override
   void initState() {
@@ -62,60 +56,86 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   Future<void> _loadData() async {
     final auth = ref.read(authProvider);
     final parentId = auth.currentUser?.id;
+    _selectedChildId = auth.selectedChildId;
+    _allChildren = auth.allChildren;
     if (parentId == null) return;
+
+    // Determine initial child index from selectedChildId
+    if (_selectedChildId != null) {
+      final idx = _allChildren.indexWhere((c) => c['id'] == _selectedChildId);
+      if (idx >= 0) _selectedChildIndex = idx;
+    }
 
     try {
       // Load parent data
-      final parentDoc = await FirebaseFirestore.instance.collection('parents').doc(parentId).get();
+      final parentDoc =
+          await FirebaseFirestore.instance.collection('parents').doc(parentId).get();
       if (!mounted) return;
       if (parentDoc.exists) {
         final data = parentDoc.data()!;
         setState(() => _parentData = data);
-        if (data['email'] != null && data['email'].toString().contains('@kidconnect.internal')) {
+        if (data['email'] != null &&
+            data['email'].toString().contains('@kidconnect.internal')) {
           _emailCtrl.text = '';
         } else {
           _emailCtrl.text = data['email'] ?? '';
         }
         _addressCtrl.text = data['address'] ?? '';
-        _fatherNameCtrl.text = data['fatherName'] ?? '';
+        // Auto-populate father name from parent name (teacher-entered)
+        _fatherNameCtrl.text =
+            data['fatherName'] as String? ?? (data['name'] as String? ?? '');
         _motherNameCtrl.text = data['motherName'] ?? '';
       }
 
-      // Load children
-      final childrenSnap = await FirebaseFirestore.instance
-              .collection('children')
-              .where('parentId', isEqualTo: parentId)
-              .get();
-          if (mounted) {
-            setState(() => _children = childrenSnap.docs.map((d) => d.data()).toList());
-            // Load per-child medical data from Firestore
-            for (var i = 0; i < _children.length; i++) {
-              final childId = _children[i]['id'] as String? ?? '';
-              if (childId.isNotEmpty && !_childMedical.containsKey(childId)) {
-                final childData = _children[i];
-                _childMedical[childId] = _ChildMedicalData(
-                  bloodGroup: childData['bloodGroup'] as String? ?? '',
-                  allergies: childData['allergies'] as String? ?? '',
-                  medicalInfo: childData['medicalInfo'] as String? ?? '',
-                  emergencyContact: childData['emergencyContact'] as String? ?? '',
-                );
-              }
-            }
-            // Load selected child's data into controllers
-            _loadChildFields();
-          }
+      // Load the selected child
+      await _loadChildData(_selectedChildId);
     } catch (_) {}
   }
 
-  void _loadChildFields() {
-    if (_children.isEmpty || _selectedChildIndex >= _children.length) return;
-    final childId = _children[_selectedChildIndex]['id'] as String? ?? '';
-    final data = _childMedical[childId] ?? _ChildMedicalData();
-    _bloodGroupCtrl.text = data.bloodGroup;
-    _allergiesCtrl.text = data.allergies;
-    _medicalCtrl.text = data.medicalInfo;
-    _emergencyCtrl.text = data.emergencyContact;
-    _bloodGroup = data.bloodGroup.isNotEmpty ? data.bloodGroup : null;
+  Future<void> _loadChildData(String? childId) async {
+    if (childId == null || childId.isEmpty) return;
+    try {
+      final childDoc = await FirebaseFirestore.instance
+          .collection('children')
+          .doc(childId)
+          .get();
+      if (!mounted) return;
+      if (childDoc.exists) {
+        final childData = childDoc.data()!;
+        setState(() => _childData = childData);
+        _bloodGroupCtrl.text = childData['bloodGroup'] as String? ?? '';
+        _allergiesCtrl.text = childData['allergies'] as String? ?? '';
+        _medicalCtrl.text = childData['medicalInfo'] as String? ?? '';
+        _emergencyCtrl.text = childData['emergencyContact'] as String? ?? '';
+        _bloodGroup = (_bloodGroupCtrl.text.isNotEmpty) ? _bloodGroupCtrl.text : null;
+      }
+    } catch (_) {}
+  }
+
+  void _switchChild(int index) {
+    if (index >= _allChildren.length) return;
+    setState(() {
+      _selectedChildIndex = index;
+      _selectedChildId = _allChildren[index]['id'];
+    });
+    // Save current child data, then load new child
+    _saveChildDataSilently();
+    _loadChildData(_selectedChildId);
+  }
+
+  Future<void> _saveChildDataSilently() async {
+    if (_selectedChildId == null || _selectedChildId!.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('children')
+          .doc(_selectedChildId)
+          .update({
+        'bloodGroup': _bloodGroupCtrl.text.trim(),
+        'allergies': _allergiesCtrl.text.trim(),
+        'medicalInfo': _medicalCtrl.text.trim(),
+        'emergencyContact': _emergencyCtrl.text.trim(),
+      });
+    } catch (_) {}
   }
 
   Future<void> _save() async {
@@ -137,38 +157,46 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         'status': 'active',
       });
 
-      // Save per-child medical data to the selected child
-      if (_children.isNotEmpty && _selectedChildIndex < _children.length) {
-        final childId = _children[_selectedChildIndex]['id'] as String? ?? '';
-        if (childId.isNotEmpty) {
-          // Update local cache
-          _childMedical[childId] = _ChildMedicalData(
-            bloodGroup: _bloodGroupCtrl.text.trim(),
-            allergies: _allergiesCtrl.text.trim(),
-            medicalInfo: _medicalCtrl.text.trim(),
-            emergencyContact: _emergencyCtrl.text.trim(),
-          );
-          // Save to Firestore
-          await FirebaseFirestore.instance.collection('children').doc(childId).update({
-            'bloodGroup': _bloodGroupCtrl.text.trim(),
-            'allergies': _allergiesCtrl.text.trim(),
-            'medicalInfo': _medicalCtrl.text.trim(),
-            'emergencyContact': _emergencyCtrl.text.trim(),
-          });
-        }
+      // Save medical data to the current child
+      if (_selectedChildId != null && _selectedChildId!.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('children')
+            .doc(_selectedChildId)
+            .update({
+          'bloodGroup': _bloodGroupCtrl.text.trim(),
+          'allergies': _allergiesCtrl.text.trim(),
+          'medicalInfo': _medicalCtrl.text.trim(),
+          'emergencyContact': _emergencyCtrl.text.trim(),
+        });
       }
 
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('✅ Profile saved! Now train your child\'s face for AI recognition.'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        context.go('/parent/face-setup');
+
+        if (widget.isViewMode) {
+          // Editing from view mode — just go back to view
+          setState(() => _editing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('✅ Profile updated!'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else {
+          // Initial setup — navigate to face enrollment
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                  '✅ Profile saved! Now train your child\'s face for AI recognition.'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          context.go('/parent/face-setup');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -189,6 +217,12 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     final parentName = _parentData?['name'] ?? '';
     final phone = _parentData?['phone'] ?? '';
     final isView = widget.isViewMode && !_editing;
+    final childName = _childData?['name'] as String? ?? 'Your Child';
+    final className = _childData?['className'] as String? ?? '';
+    final section = _childData?['section'] as String?;
+    final classDisplay =
+        '$className${section != null && section.isNotEmpty ? ' · Section $section' : ''}';
+    final showChildSwitcher = _allChildren.length > 1 && (isView || _editing || !widget.isViewMode);
 
     if (_parentData == null) {
       return Scaffold(
@@ -200,8 +234,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-            isView ? 'My Profile' : 'Complete Your Profile',
+        title: Text(isView ? 'My Profile' : 'Complete Setup',
             style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background,
         elevation: 0,
@@ -226,6 +259,14 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
               tooltip: 'Edit Profile',
               onPressed: () => setState(() => _editing = true),
             ),
+          if (_editing && widget.isViewMode)
+            TextButton(
+              onPressed: () => setState(() => _editing = false),
+              child: Text('Cancel',
+                  style: GoogleFonts.nunito(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+            ),
         ],
       ),
       body: Form(
@@ -235,18 +276,25 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Teacher-entered (always read-only) ──
-              _buildReadOnlySection(parentName, phone),
+              // 1) Child name & class (prominent header) + child switcher
+              _buildChildHeader(childName, classDisplay, showChildSwitcher),
+              if (showChildSwitcher) const SizedBox(height: 12),
+              const SizedBox(height: 20),
+              // 2) Teacher-entered details (read-only)
+              _buildTeacherDetailsCard(parentName, phone),
               const SizedBox(height: 24),
-              // ── Parent details ──
+              // 3) Parent-editable fields
               Text(
-                  isView ? 'Your Details' : 'Complete the remaining details',
+                  isView
+                      ? 'Parent Details'
+                      : widget.isViewMode
+                          ? 'Edit Details'
+                          : 'Complete the remaining details',
                   style: GoogleFonts.nunito(
                       fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 16),
-              isView
-                  ? _buildViewOnlyFields()
-                  : _buildEditableFields(),
+              isView ? _buildViewOnlyFields() : _buildEditableFields(),
+              // Save / Close buttons
               if (!isView) ...[
                 const SizedBox(height: 32),
                 SizedBox(
@@ -262,7 +310,11 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                                 strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.check_circle_outline, size: 22),
                     label: Text(
-                        _saving ? 'Saving...' : 'Save & Continue',
+                        _saving
+                            ? 'Saving...'
+                            : widget.isViewMode
+                                ? 'Save Changes'
+                                : 'Save & Continue',
                         style: GoogleFonts.nunito(
                             fontWeight: FontWeight.w800, fontSize: 16)),
                     style: ElevatedButton.styleFrom(
@@ -302,6 +354,177 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // 1) Child header — name at top, then class, with optional child switcher
+  // ──────────────────────────────────────────────────────────────────────
+  Widget _buildChildHeader(
+      String childName, String classDisplay, bool showChildSwitcher) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+            color: AppColors.primary.withValues(alpha: 0.2), width: 1),
+      ),
+      color: AppColors.primary.withValues(alpha: 0.06),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.parentGradient,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Text(
+                      childName.isNotEmpty ? childName[0].toUpperCase() : '🧒',
+                      style: GoogleFonts.nunito(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        childName,
+                        style: GoogleFonts.nunito(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          classDisplay.isNotEmpty
+                              ? classDisplay
+                              : 'Class info pending',
+                          style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (showChildSwitcher) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border, width: 1),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedChildIndex,
+                    isExpanded: true,
+                    icon: const Icon(Icons.swap_vert,
+                        color: AppColors.primary, size: 20),
+                    style: GoogleFonts.nunito(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600),
+                    items: List.generate(_allChildren.length, (i) {
+                      return DropdownMenuItem(
+                        value: i,
+                        child: Row(children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor:
+                                AppColors.primary.withValues(alpha: 0.12),
+                            child: Text(
+                              (_allChildren[i]['name'] ?? '?')[0].toUpperCase(),
+                              style: GoogleFonts.nunito(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(_allChildren[i]['name'] ?? 'Child'),
+                        ]),
+                      );
+                    }),
+                    onChanged: (val) {
+                      if (val != null) _switchChild(val);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 2) Teacher-entered details card (always read-only)
+  // ──────────────────────────────────────────────────────────────────────
+  Widget _buildTeacherDetailsCard(String parentName, String phone) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border, width: 1),
+      ),
+      color: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.verified,
+                      color: AppColors.success, size: 18)),
+              const SizedBox(width: 10),
+              Text('Details Registered by School',
+                  style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.success)),
+            ]),
+            const SizedBox(height: 14),
+            _teacherRow('Parent Name', parentName),
+            const SizedBox(height: 8),
+            _teacherRow('Phone Number', '+91 $phone'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 3) Editable fields
+  // ──────────────────────────────────────────────────────────────────────
   Widget _buildViewOnlyFields() {
     return Column(children: [
       _viewOnlyRow('Email', _emailCtrl.text),
@@ -338,116 +561,76 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     ]);
   }
 
-  Widget _buildChildSelector() {
-    if (_children.length <= 1) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        height: 52,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<int>(
-            value: _selectedChildIndex,
-            isExpanded: true,
-            icon: const Icon(Icons.expand_more, color: AppColors.textSecondary),
-            style: GoogleFonts.nunito(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
-            items: List.generate(_children.length, (i) =>
-              DropdownMenuItem(value: i, child: Text('Data for: ${_children[i]['name']}'))
-            ),
-            onChanged: (val) {
-              if (val != null) {
-                setState(() { _selectedChildIndex = val; _loadChildFields(); });
-              }
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEditableFields() {
     return Column(children: [
-      _buildChildSelector(),
-      const SizedBox(height: 8),
-      _buildTextField('Email Address *', _emailCtrl, TextInputType.emailAddress, 'Enter your email'),
+      // Father name — auto-populated from parent name, but editable
+      _buildTextField('Father\'s Name *', _fatherNameCtrl, TextInputType.name,
+          'Father\'s full name'),
       const SizedBox(height: 14),
-      _buildTextField('Father\'s Name', _fatherNameCtrl, TextInputType.name, 'Father\'s full name'),
+      _buildTextField('Mother\'s Name', _motherNameCtrl, TextInputType.name,
+          'Mother\'s full name'),
       const SizedBox(height: 14),
-      _buildTextField('Mother\'s Name', _motherNameCtrl, TextInputType.name, 'Mother\'s full name'),
+      _buildTextField('Email Address *', _emailCtrl,
+          TextInputType.emailAddress, 'Enter your email'),
       const SizedBox(height: 14),
-      _buildTextField('Residential Address', _addressCtrl, TextInputType.streetAddress, 'Your address'),
+      _buildTextField('Residential Address', _addressCtrl,
+          TextInputType.streetAddress, 'Your address'),
       const SizedBox(height: 14),
       _buildBloodGroupDropdown(),
       const SizedBox(height: 14),
-      _buildTextField('Allergies', _allergiesCtrl, TextInputType.text, 'Any known allergies'),
+      _buildTextField(
+          'Allergies', _allergiesCtrl, TextInputType.text, 'Any known allergies'),
       const SizedBox(height: 14),
-      _buildTextField('Medical Information', _medicalCtrl, TextInputType.text, 'Medical conditions, medications'),
+      _buildTextField('Medical Information', _medicalCtrl, TextInputType.text,
+          'Medical conditions, medications'),
       const SizedBox(height: 14),
-      _buildTextField('Emergency Contact', _emergencyCtrl, TextInputType.phone, 'Emergency contact number'),
+      _buildTextField('Emergency Contact', _emergencyCtrl,
+          TextInputType.phone, 'Emergency contact number'),
     ]);
   }
 
-  Widget _buildReadOnlySection(String parentName, String phone) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.border, width: 1),
-      ),
-      color: AppColors.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Container(width: 36, height: 36,
-                decoration: BoxDecoration(gradient: AppColors.parentGradient, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.verified, color: Colors.white, size: 20)),
-              const SizedBox(width: 10),
-              Text('Verified by School', style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.success)),
-            ]),
-            const SizedBox(height: 14),
-            _readOnlyRow('Parent Name', parentName),
-            const SizedBox(height: 8),
-            _readOnlyRow('Phone Number', '+91 $phone'),
-            const Divider(height: 20),
-            ..._children.map((c) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _readOnlyRow('Child', '${c['name']} — ${c['className']}${c['section'] != null ? ' · ${c['section']}' : ''}'),
-            )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _readOnlyRow(String label, String value) {
+  Widget _teacherRow(String label, String value) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 110, child: Text(label, style: GoogleFonts.nunito(fontSize: 12, color: AppColors.textTertiary, fontWeight: FontWeight.w600))),
-      Expanded(child: Text(value, style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700))),
+      SizedBox(
+          width: 110,
+          child: Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                  fontWeight: FontWeight.w600))),
+      Expanded(
+          child: Text(value,
+              style: GoogleFonts.nunito(
+                  fontSize: 14, fontWeight: FontWeight.w700))),
     ]);
   }
 
-  Widget _buildTextField(String label, TextEditingController ctrl, TextInputType keyboardType, String hint) {
+  Widget _buildTextField(String label, TextEditingController ctrl,
+      TextInputType keyboardType, String hint) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+      Text(label,
+          style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary)),
       const SizedBox(height: 6),
       TextFormField(
         controller: ctrl,
         keyboardType: keyboardType,
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.nunito(color: AppColors.textTertiary, fontSize: 15),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          hintStyle: GoogleFonts.nunito(
+              color: AppColors.textTertiary, fontSize: 15),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none),
           filled: true,
           fillColor: AppColors.surfaceVariant,
         ),
-        validator: label.contains('*') ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null,
+        validator: label.contains('*')
+            ? (v) =>
+                (v == null || v.trim().isEmpty) ? 'Required' : null
+            : null,
       ),
     ]);
   }
@@ -455,19 +638,31 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   Widget _buildBloodGroupDropdown() {
     const groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Blood Group', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+      Text('Blood Group',
+          style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary)),
       const SizedBox(height: 6),
       Container(
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(14)),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String?>(
             value: _bloodGroup,
             isExpanded: true,
-            hint: Text('Select blood group', style: GoogleFonts.nunito(color: AppColors.textTertiary, fontSize: 15)),
-            icon: const Icon(Icons.expand_more, color: AppColors.textSecondary),
-            items: groups.map((g) => DropdownMenuItem<String?>(value: g, child: Text(g))).toList(),
+            hint: Text('Select blood group',
+                style: GoogleFonts.nunito(
+                    color: AppColors.textTertiary, fontSize: 15)),
+            icon: const Icon(Icons.expand_more,
+                color: AppColors.textSecondary),
+            items: groups
+                .map((g) =>
+                    DropdownMenuItem<String?>(value: g, child: Text(g)))
+                .toList(),
             onChanged: (val) => setState(() => _bloodGroup = val),
           ),
         ),
