@@ -738,17 +738,17 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
 
       // Find the largest face
       double maxArea = 0;
-      img.Rectangle faceRect = img.Rectangle(0, 0, image.width, image.height);
+      Rect faceRect = Rect.fromLTRB(0, 0, image.width.toDouble(), image.height.toDouble());
       for (final face in faces) {
         final rect = face.boundingBox;
         final area = (rect.right - rect.left) * (rect.bottom - rect.top);
         if (area > maxArea) {
           maxArea = area;
-          faceRect = img.Rectangle(
-            rect.left.toInt().clamp(0, image.width),
-            rect.top.toInt().clamp(0, image.height),
-            rect.right.toInt().clamp(0, image.width),
-            rect.bottom.toInt().clamp(0, image.height),
+          faceRect = Rect.fromLTRB(
+            rect.left.toDouble().clamp(0, image.width.toDouble()),
+            rect.top.toDouble().clamp(0, image.height.toDouble()),
+            rect.right.toDouble().clamp(0, image.width.toDouble()),
+            rect.bottom.toDouble().clamp(0, image.height.toDouble()),
           );
         }
       }
@@ -757,10 +757,10 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
       final padW = ((faceRect.right - faceRect.left) * 0.3).round();
       final padH = ((faceRect.bottom - faceRect.top) * 0.3).round();
 
-      final cropLeft = (faceRect.left - padW).clamp(0, image.width);
-      final cropTop = (faceRect.top - padH).clamp(0, image.height);
-      final cropRight = (faceRect.right + padW).clamp(0, image.width);
-      final cropBottom = (faceRect.bottom + padH).clamp(0, image.height);
+      final cropLeft = (faceRect.left - padW).clamp(0, image.width).toInt();
+      final cropTop = (faceRect.top - padH).clamp(0, image.height).toInt();
+      final cropRight = (faceRect.right + padW).clamp(0, image.width).toInt();
+      final cropBottom = (faceRect.bottom + padH).clamp(0, image.height).toInt();
 
       final cropped = img.copyCrop(image,
           x: cropLeft,
