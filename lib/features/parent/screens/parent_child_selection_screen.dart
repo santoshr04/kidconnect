@@ -113,7 +113,7 @@ class ParentChildSelectionScreen extends ConsumerWidget {
     final section = child['section'] as String?;
     final hasFaceProfile = child['hasFaceProfile'] == true;
     final status = child['status'] as String? ?? 'pending_completion';
-    final isComplete = status == 'active';
+    final isComplete = status == 'active' && hasFaceProfile;
 
     return Card(
       elevation: 0,

@@ -186,9 +186,7 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
   // ─── ENROLLED VIEW ─────────────────────────────────────────
 
   Widget _buildEnrolled() {
-    final dc = _existingEmbedCount > 0
-        ? _existingEmbedCount
-        : _persistedPhotos.length;
+    final dc = _existingEmbedCount;
     final remaining = 10 - dc;
 
     return SingleChildScrollView(
