@@ -645,113 +645,240 @@ class _FaceEnrollmentScreenState extends ConsumerState<FaceEnrollmentScreen> {
 
   // ─── PROGRESS OVERLAY ──────────────────────────────────────
 
+  static const _stageLabels = [
+    'Cropping Face',
+    'Quality Check',
+    'Cloud Upload',
+    'AI Training',
+    'Complete!',
+  ];
+
+  static const _stageIcons = [
+    Icons.auto_fix_high,
+    Icons.search,
+    Icons.cloud_upload_outlined,
+    Icons.psychology_outlined,
+    Icons.celebration,
+  ];
+
+  String _getFunMessage() {
+    const msgs = <_TrainingStage, List<String>>{
+      _TrainingStage.cropping: [
+        'Scanning pixel by pixel... 👀',
+        'Found a face! Locking on target... 🎯',
+        'Measuring nose-to-ear ratios... 📐',
+        'This one\'s a keeper! ✨',
+      ],
+      _TrainingStage.validating: [
+        'Is it really a face? Let\'s check... 🤔',
+        'Counting eyes: 2 ✓  Nose: 1 ✓  Smile: pending...',
+        'Lighting check: passed! ☀️',
+        'Face clarity score: Excellent! 🏆',
+      ],
+      _TrainingStage.uploading: [
+        'Compressing pixels for their journey... 📦',
+        'Rocket engines ignited! 🚀',
+        'Dodging cosmic dust in the cloud... ☁️',
+        'Safely arrived at Firebase HQ! 🏢',
+      ],
+      _TrainingStage.training: [
+        'AI neurons firing up... ⚡',
+        'Running 128 face measurements... 📏',
+        'Embedding locked in memory! 💾',
+      ],
+      _TrainingStage.done: [
+        'Mission accomplished! 🎖️',
+      ],
+    };
+    final stageMsgs = msgs[_stage] ?? ['Working...'];
+    final idx = _current % stageMsgs.length;
+    return stageMsgs[idx];
+  }
+
   Widget _buildProgressOverlay() {
-    final emoji = switch (_stage) {
-      _TrainingStage.cropping => '🤖',
-      _TrainingStage.validating => '🔍',
-      _TrainingStage.uploading => '☁️',
-      _TrainingStage.training => '🧠',
-      _TrainingStage.done => '🎉',
-    };
-    final label = switch (_stage) {
-      _TrainingStage.cropping => 'Detecting & cropping faces...',
-      _TrainingStage.validating => 'Checking photo quality...',
-      _TrainingStage.uploading => 'Uploading to cloud...',
-      _TrainingStage.training =>
-        'Teaching AI to recognize $_childName...',
-      _TrainingStage.done => '$_childName trained successfully!',
-    };
     final pct = _total > 0 ? _current / _total : 0.0;
+    final percentage = (pct * 100).round();
+    final isDone = _stage == _TrainingStage.done;
+
+    // Overall progress: stage index + per-stage progress
+    final stageIndex = _TrainingStage.values.indexOf(_stage);
+    final totalStages = _TrainingStage.values.length - 1; // exclude 'done'
+    final overallPct = isDone
+        ? 1.0
+        : (stageIndex / totalStages) + (pct / totalStages).clamp(0.0, 1.0 / totalStages);
 
     return Container(
       color: AppColors.background.withValues(alpha: 0.97),
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 56)),
-              const SizedBox(height: 20),
+              // Circular progress ring
+              SizedBox(
+                width: 160,
+                height: 160,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 160,
+                      height: 160,
+                      child: CircularProgressIndicator(
+                        value: overallPct,
+                        strokeWidth: 8,
+                        strokeCap: StrokeCap.round,
+                        backgroundColor:
+                            AppColors.primary.withValues(alpha: 0.1),
+                        valueColor: AlwaysStoppedAnimation(
+                          isDone
+                              ? AppColors.success
+                              : const Color(0xFFFF8E53),
+                        ),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isDone)
+                          const Icon(Icons.check_circle,
+                              color: AppColors.success, size: 40)
+                        else ...[
+                          Text(
+                            '$percentage%',
+                            style: GoogleFonts.nunito(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              color: isDone
+                                  ? AppColors.success
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            '${_current + 1}/$_total',
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // Stage title
               Text(
-                label,
+                isDone
+                    ? 'Training Complete! 🎉'
+                    : '${_stageLabels[stageIndex]} (${stageIndex + 1}/${totalStages + 1})',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.nunito(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                _stage == _TrainingStage.done
-                    ? '$_succeeded photo${_succeeded != 1 ? 's' : ''} trained'
-                    : '${_current + 1} of $_total',
-                style: GoogleFonts.nunito(
-                    fontSize: 14,
+              const SizedBox(height: 10),
+
+              // Fun status message
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: Text(
+                  _getFunMessage(),
+                  key: ValueKey('$_current-$_stage'),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                height: 8,
-                width: 220,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutCubic,
-                    width: 220 * pct,
-                    decoration: BoxDecoration(
-                      gradient: _stage == _TrainingStage.done
-                          ? const LinearGradient(colors: [
-                              Color(0xFF4CAF50),
-                              Color(0xFF8BC34A)
-                            ])
-                          : const LinearGradient(colors: [
-                              AppColors.primary,
-                              Color(0xFFFF8E53)
-                            ]),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              if (_stage == _TrainingStage.done) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(height: 20),
+
+              // Stage stepping dots
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  totalStages + 1,
+                  (i) {
+                    final isCompleted = i < stageIndex || isDone;
+                    final isCurrent = i == stageIndex && !isDone;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.symmetric(horizontal: 5),
+                      width: isCurrent ? 32 : 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        color: isCompleted
+                            ? AppColors.success
+                            : isCurrent
+                                ? const Color(0xFFFF8E53)
+                                : AppColors.primary.withValues(alpha: 0.2),
+                      ),
+                      child: isCurrent
+                          ? const Center(
+                              child: Icon(Icons.circle,
+                                  size: 6, color: Colors.white))
+                          : isCompleted
+                              ? const Center(
+                                  child: Icon(Icons.check,
+                                      size: 8, color: Colors.white))
+                              : null,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Stage icon labels
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: List.generate(
-                    _succeeded,
-                    (i) => const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 3),
-                      child: Icon(Icons.check_circle,
-                          color: AppColors.success, size: 22),
+                    totalStages + 1,
+                    (i) => Expanded(
+                      child: Icon(
+                        _stageIcons[i],
+                        size: 20,
+                        color: i <= stageIndex
+                            ? AppColors.textPrimary
+                            : AppColors.textTertiary,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+              ),
+
+              const SizedBox(height: 28),
+
+              // Done button
+              if (isDone)
                 SizedBox(
                   width: 200,
-                  height: 44,
-                  child: ElevatedButton(
+                  height: 48,
+                  child: ElevatedButton.icon(
                     onPressed: _hideProgress,
+                    icon: const Icon(Icons.check, size: 20),
+                    label: Text('Show Results',
+                        style: GoogleFonts.nunito(
+                            fontWeight: FontWeight.w700, fontSize: 15)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: AppColors.success,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: Text('Continue',
-                        style: GoogleFonts.nunito(
-                            fontWeight: FontWeight.w700)),
                   ),
                 ),
-              ],
             ],
           ),
         ),
