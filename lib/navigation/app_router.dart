@@ -19,6 +19,14 @@ import '../features/teacher/screens/registered_students_screen.dart';
 import '../features/messaging/screens/chat_screen.dart';
 import '../data/models/user_model.dart';
 import '../data/models/photo_model.dart';
+import '../features/admin/screens/admin_shell.dart';
+import '../features/admin/screens/admin_dashboard_screen.dart';
+import '../features/admin/screens/admin_classes_screen.dart';
+import '../features/admin/screens/admin_teachers_screen.dart';
+import '../features/admin/screens/admin_students_screen.dart';
+import '../features/admin/screens/admin_parents_screen.dart';
+import '../features/admin/screens/admin_photos_screen.dart';
+import '../features/admin/screens/admin_more_screen.dart';
 import 'bottom_nav_shell.dart';
 
 /// Listenable to notify GoRouter of auth state changes
@@ -247,6 +255,56 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/teacher/register',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: StudentRegistrationScreen(),
+            ),
+          ),
+        ],
+      ),
+
+      // ─── Admin Shell ──────────────────────────────────
+      ShellRoute(
+        builder: (context, state, child) =>
+            AdminShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/admin',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminDashboardScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/classes',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminClassesScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/teachers',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminTeachersScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/students',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminStudentsScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/parents',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminParentsScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/photos',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminPhotosScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin/more',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: AdminMoreScreen(),
             ),
           ),
         ],
