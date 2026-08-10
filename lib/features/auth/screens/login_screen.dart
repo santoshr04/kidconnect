@@ -17,20 +17,32 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _emailController = TextEditingController(text: 'teacher@kidconnect.com');
-  final _passwordController = TextEditingController(text: 'password123');
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   bool _obscurePassword = true;
 
   bool get _isParent => widget.role == 'parent';
-  Color get _themeColor => _isParent ? AppColors.primary : AppColors.secondary;
+  bool get _isAdmin => widget.role == 'admin';
+  Color get _themeColor => _isParent ? AppColors.primary : _isAdmin ? const Color(0xFF7C4DFF) : AppColors.secondary;
   Gradient get _themeGradient =>
       _isParent ? AppColors.parentGradient : AppColors.teacherGradient;
 
   @override
   void initState() {
     super.initState();
+    // Pre-fill credentials based on role
+    if (widget.role == 'admin') {
+      _emailController = TextEditingController(text: 'admin@kidconnect.com');
+      _passwordController = TextEditingController(text: 'admin123');
+    } else if (widget.role == 'teacher') {
+      _emailController = TextEditingController(text: 'teacher@kidconnect.com');
+      _passwordController = TextEditingController(text: 'password123');
+    } else {
+      _emailController = TextEditingController(text: '');
+      _passwordController = TextEditingController(text: '');
+    }
     _controller = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -50,7 +62,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    final role = _isParent ? UserRole.parent : UserRole.teacher;
+    final role = _isParent
+        ? UserRole.parent
+        : _isAdmin
+            ? UserRole.admin
+            : UserRole.teacher;
     final success = await ref.read(authProvider.notifier).login(
           _emailController.text,
           _passwordController.text,

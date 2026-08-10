@@ -27,6 +27,19 @@ class MockData {
     ),
   ];
 
+  /// Test admin accounts
+  static final List<UserModel> admins = [
+    UserModel(
+      id: 'admin_1',
+      name: 'Admin User',
+      email: 'admin@kidconnect.com',
+      role: UserRole.admin,
+      phone: '',
+      createdAt: DateTime(2025, 1, 1),
+      permissions: ['all'],
+    ),
+  ];
+
   static final List<UserModel> parents = [
     UserModel(
       id: 'parent_1',

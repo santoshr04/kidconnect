@@ -43,6 +43,7 @@ class AuthState {
 
   bool get isParent => currentUser?.role == UserRole.parent;
   bool get isTeacher => currentUser?.role == UserRole.teacher;
+  bool get isAdmin => currentUser?.role == UserRole.admin;
 }
 
 /// Auth notifier managing authentication state.
@@ -80,8 +81,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await Future.delayed(const Duration(milliseconds: 800));
 
     UserModel? user;
-    if (role == UserRole.parent) {
-      // Match by email if possible, otherwise use first parent
+    if (role == UserRole.admin) {
+      user = MockData.admins.cast<UserModel?>().firstWhere(
+        (a) => a!.email.toLowerCase() == email.toLowerCase(),
+        orElse: () => MockData.admins.isNotEmpty ? MockData.admins.first : null,
+      );
+    } else if (role == UserRole.parent) {
       user = MockData.parents.cast<UserModel?>().firstWhere(
         (p) => p!.email.toLowerCase() == email.toLowerCase(),
         orElse: () => MockData.parents.isNotEmpty ? MockData.parents.first : null,

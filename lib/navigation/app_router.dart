@@ -90,6 +90,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (isLoginRoute) {
           return '/teacher';
         }
+      } else if (authState.isAdmin) {
+        // Admin
+        if (isLoginRoute) {
+          return '/admin';
+        }
       }
 
       return null;

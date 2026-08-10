@@ -186,6 +186,28 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                             onTap: () => context.push('/login', extra: 'teacher'),
                           ),
 
+                          const SizedBox(height: 16),
+
+                          // ─── Admin Card ──────────────────────
+                          _BigRoleCard(
+                            emoji: '🔧',
+                            title: "I'm Admin",
+                            features: [
+                              '📊 View live dashboard stats',
+                              '🏫 Manage classes & teachers',
+                              '👥 Manage students & parents',
+                              '📸 Review & approve photos',
+                            ],
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF7C4DFF), Color(0xFF448AFF)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            delay: 600,
+                            floatController: _floatController,
+                            onTap: () => context.push('/login', extra: 'admin'),
+                          ),
+
                           const SizedBox(height: 36),
 
                           // Footer
