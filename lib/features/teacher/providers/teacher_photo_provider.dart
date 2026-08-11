@@ -5,8 +5,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/repositories/photo_repository.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 import '../../../core/services/insight_face_service.dart';
-
+import '../../../core/services/background_service.dart';
 /// Upload state shared across screens.
 class UploadState {
   final bool isUploading;
@@ -167,11 +170,39 @@ class UploadNotifier extends StateNotifier<UploadState> {
       fileUploadStatus: initialStatus,
     );
 
+    // Save to SharedPreferences for persistence
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getStringList('pending_uploads') ?? [];
+      for (int i = 0; i < files.length; i++) {
+        pending.add(jsonEncode({
+          'localId': localIds[i],
+          'path': files[i].path,
+          'uploadedBy': uploadedBy,
+        }));
+      }
+      await prefs.setStringList('pending_uploads', pending);
+    } catch (_) {}
+
+    // Register fallback WorkManager task
+    try {
+      await Workmanager().registerOneOffTask(
+        'uploadPendingTask_${DateTime.now().millisecondsSinceEpoch}',
+        'uploadPendingPhotos',
+      );
+    } catch (_) {}
+
+    // Start Foreground Service for immediate background execution
+    await BackgroundService.startUploadForegroundService(total, 0);
+
     // Collect uploaded photos for background auto-tagging after all uploads
     final uploadedPhotos = <Map<String, String>>[];
 
     for (int i = 0; i < files.length; i++) {
       final localId = localIds[i];
+
+      // Update foreground notification progress
+      await BackgroundService.startUploadForegroundService(total, i + 1);
 
       // Mark this file as uploading
       final updatedStatus = Map<String, String>.from(state.fileUploadStatus);
@@ -206,6 +237,17 @@ class UploadNotifier extends StateNotifier<UploadState> {
         doneStatus[localId] = 'done';
         state = state.copyWith(fileUploadStatus: doneStatus);
 
+        // Remove from SharedPreferences
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final pending = prefs.getStringList('pending_uploads') ?? [];
+          pending.removeWhere((item) {
+            final parsed = jsonDecode(item);
+            return parsed['localId'] == localId;
+          });
+          await prefs.setStringList('pending_uploads', pending);
+        } catch (_) {}
+
         // Collect for background auto-tagging (non-blocking)
         uploadedPhotos.add({'id': result.id, 'url': result.url});
       } else {
@@ -216,6 +258,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
       state = state.copyWith(completedFiles: i + 1);
     }
+
+    // Stop foreground service
+    await BackgroundService.stopUploadForegroundService();
 
     // Fire-and-forget background auto-tagging for ALL uploaded photos
     if (uploadedPhotos.isNotEmpty) {

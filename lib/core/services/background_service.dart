@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_background/flutter_background.dart';
 
 class BackgroundService {
   BackgroundService._();
@@ -18,6 +19,10 @@ class BackgroundService {
         ),
       ),
     );
+
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.requestNotificationsPermission();
   }
 
   static Future<void> showPhotoNotification({
@@ -44,23 +49,31 @@ class BackgroundService {
     );
   }
 
-  static Future<void> showForegroundNotification({
-    required String title,
-    required String body,
-  }) async {
-    await _notifications.show(
-      id: 1,
-      title: title,
-      body: body,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'kidconnect_foreground', 'KidConnect Service',
-          channelDescription: 'Keeps KidConnect running in background',
-          importance: Importance.low, priority: Priority.low,
-          ongoing: true, autoCancel: false, showWhen: false,
-        ),
-      ),
-    );
+  static Future<void> startUploadForegroundService(int total, int current) async {
+    try {
+      if (!FlutterBackground.isBackgroundExecutionEnabled) {
+        const androidConfig = FlutterBackgroundAndroidConfig(
+          notificationTitle: 'Uploading Photos',
+          notificationText: 'Uploading in background...',
+          notificationImportance: AndroidNotificationImportance.normal,
+          notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+        );
+        await FlutterBackground.initialize(androidConfig: androidConfig);
+        await FlutterBackground.enableBackgroundExecution();
+      }
+    } catch (e) {
+      print('FlutterBackground error: $e');
+    }
+  }
+
+  static Future<void> stopUploadForegroundService() async {
+    try {
+      if (FlutterBackground.isBackgroundExecutionEnabled) {
+        await FlutterBackground.disableBackgroundExecution();
+      }
+    } catch (e) {
+      print('FlutterBackground stop error: $e');
+    }
   }
 
   static Future<void> cancelForegroundNotification() async {
