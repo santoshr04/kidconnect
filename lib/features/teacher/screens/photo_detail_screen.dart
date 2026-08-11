@@ -13,6 +13,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../data/models/photo_model.dart';
 import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
+import '../../../core/services/background_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/teacher_photo_provider.dart';
 
@@ -162,7 +163,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     final sortedFaces = List<DetectedFace>.from(result.faces)
       ..sort((a, b) => a.left.compareTo(b.left));
 
-    final circs = <_FaceCircle>[];
+    final circs = <_FaceCircle>[]
     for (var i = 0; i < sortedFaces.length; i++) {
       final f = sortedFaces[i];
       final faceLeft = f.left.toInt();
@@ -258,6 +259,12 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     } catch (_) {}
 
     _updateGalleryState();
+
+    // Show completion notification
+    BackgroundService.showPhotoNotification(
+      title: '✅ Photo Tagged',
+      body: '$_handledCount face(s) assigned to children',
+    );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

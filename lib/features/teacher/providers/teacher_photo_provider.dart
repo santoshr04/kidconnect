@@ -367,9 +367,20 @@ bool isPhotoPending(PhotoModel photo) => photo.tags.contains('__pending__');
 /// Only accepts child IDs that are registered in Firestore.
 /// Non-blocking background auto-tag for a batch of uploaded photos.
 void _autoTagBatch(List<Map<String, String>> photos) {
-  for (final photo in photos) {
-    _autoTagPhotoAsync(photo['id']!, photo['url']!);
+  _autoTagBatchWithNotifications(photos);
+}
+
+Future<void> _autoTagBatchWithNotifications(List<Map<String, String>> photos) async {
+  final total = photos.length;
+  await BackgroundService.showTaggingProgress(completed: 0, total: total);
+  int completed = 0;
+  for (int i = 0; i < photos.length; i++) {
+    final photo = photos[i];
+    await _autoTagPhotoAsync(photo['id']!, photo['url']!);
+    completed++;
+    await BackgroundService.showTaggingProgress(completed: completed, total: total);
   }
+  await BackgroundService.cancelTaggingProgress();
 }
 
 Future<void> _autoTagPhotoAsync(String photoId, String photoUrl) async {
