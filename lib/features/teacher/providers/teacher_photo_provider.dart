@@ -82,13 +82,42 @@ class TeacherPhotoState {
 }
 
 class TeacherPhotoNotifier extends StateNotifier<TeacherPhotoState> {
-  TeacherPhotoNotifier() : super(const TeacherPhotoState());
+  TeacherPhotoNotifier() : super(const TeacherPhotoState()) {
+    _loadPendingUploads();
+  }
+
+  Future<void> _loadPendingUploads() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getStringList('pending_uploads') ?? [];
+      if (pending.isEmpty) return;
+
+      final restoredPhotos = pending.map((item) {
+        final data = jsonDecode(item);
+        return PhotoModel(
+          id: data['localId'],
+          url: data['path'],
+          caption: '',
+          childIds: [],
+          uploadedBy: data['uploadedBy'] ?? '',
+          uploadDate: DateTime.now(),
+          tags: ['__pending__'], // Marker for pending upload
+        );
+      }).toList();
+
+      state = TeacherPhotoState(
+        uploadedPhotos: [...restoredPhotos, ...state.uploadedPhotos],
+      );
+    } catch (e) {
+      print('Error loading pending uploads: $e');
+    }
+  }
 
   /// WhatsApp-style: add photos instantly with local paths and pending status.
-  void addPendingPhotos(List<File> files, String uploadedBy) {
-    final newPhotos = files.map((file) => PhotoModel(
-      id: 'pending_${DateTime.now().millisecondsSinceEpoch}_${files.indexOf(file)}',
-      url: file.path,
+  void addPendingPhotos(List<File> files, String uploadedBy, List<String> localIds) {
+    final newPhotos = files.asMap().entries.map((entry) => PhotoModel(
+      id: localIds[entry.key],
+      url: entry.value.path,
       caption: '',
       childIds: [],
       uploadedBy: uploadedBy,

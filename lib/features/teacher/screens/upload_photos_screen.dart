@@ -39,17 +39,14 @@ class _UploadPhotosScreenState extends ConsumerState<UploadPhotosScreen> {
     final user = ref.read(authProvider).currentUser;
     final uploadedBy = user?.id ?? 'teacher_1';
 
+    // Generate unique local IDs for this batch
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final localIds = files.asMap().entries.map((e) => 'pending_${timestamp}_${e.key}').toList();
+
     // 1. Instantly add to gallery with local previews
-    ref.read(teacherPhotoStateProvider.notifier).addPendingPhotos(files, uploadedBy);
+    ref.read(teacherPhotoStateProvider.notifier).addPendingPhotos(files, uploadedBy, localIds);
 
     // 2. Start background upload
-    final localIds = ref.read(teacherPhotoStateProvider).uploadedPhotos
-        .where((p) => isPhotoPending(p))
-        .map((p) => p.id)
-        .toList()
-        .take(files.length)
-        .toList();
-
     ref.read(uploadStateProvider.notifier).uploadPhotos(files, uploadedBy, localIds);
 
     // 3. AUTO-NAVIGATE to gallery so teacher sees progress
