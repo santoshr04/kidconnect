@@ -163,7 +163,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     final sortedFaces = List<DetectedFace>.from(result.faces)
       ..sort((a, b) => a.left.compareTo(b.left));
 
-    final circs = <_FaceCircle>[]
+    final circs = <_FaceCircle>[];
     for (var i = 0; i < sortedFaces.length; i++) {
       final f = sortedFaces[i];
       final faceLeft = f.left.toInt();
