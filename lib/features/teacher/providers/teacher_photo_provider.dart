@@ -92,22 +92,39 @@ class TeacherPhotoNotifier extends StateNotifier<TeacherPhotoState> {
       final pending = prefs.getStringList('pending_uploads') ?? [];
       if (pending.isEmpty) return;
 
-      final restoredPhotos = pending.map((item) {
-        final data = jsonDecode(item);
-        return PhotoModel(
-          id: data['localId'],
-          url: data['path'],
-          caption: '',
-          childIds: [],
-          uploadedBy: data['uploadedBy'] ?? '',
-          uploadDate: DateTime.now(),
-          tags: ['__pending__'], // Marker for pending upload
-        );
-      }).toList();
+      final validItems = <String>[];
+      final restoredPhotos = <PhotoModel>[];
+      for (final item in pending) {
+        try {
+          final data = jsonDecode(item);
+          final path = data['path'] as String?;
+          // Only restore if the local file still exists
+          if (path != null && File(path).existsSync()) {
+            restoredPhotos.add(PhotoModel(
+              id: data['localId'],
+              url: path,
+              caption: '',
+              childIds: [],
+              uploadedBy: data['uploadedBy'] ?? '',
+              uploadDate: DateTime.now(),
+              tags: ['__pending__'],
+            ));
+            validItems.add(item);
+          }
+          // Invalid paths are dropped (file was deleted/moved)
+        } catch (_) {}
+      }
 
-      state = TeacherPhotoState(
-        uploadedPhotos: [...restoredPhotos, ...state.uploadedPhotos],
-      );
+      // Clean up — remove any entries with missing files
+      if (validItems.length != pending.length) {
+        await prefs.setStringList('pending_uploads', validItems);
+      }
+
+      if (restoredPhotos.isNotEmpty) {
+        state = TeacherPhotoState(
+          uploadedPhotos: [...restoredPhotos, ...state.uploadedPhotos],
+        );
+      }
     } catch (e) {
       print('Error loading pending uploads: $e');
     }
@@ -221,8 +238,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
       );
     } catch (_) {}
 
-    // Start Foreground Service for immediate background execution
-    await BackgroundService.startUploadForegroundService(total, 0);
+    // Show upload progress notification
+    await BackgroundService.showUploadProgress(completed: 0, total: total);
 
     // Collect uploaded photos for background auto-tagging after all uploads
     final uploadedPhotos = <Map<String, String>>[];
@@ -230,8 +247,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
     for (int i = 0; i < files.length; i++) {
       final localId = localIds[i];
 
-      // Update foreground notification progress
-      await BackgroundService.startUploadForegroundService(total, i + 1);
+      // Update upload progress notification
+      await BackgroundService.showUploadProgress(completed: i, total: total);
 
       // Mark this file as uploading
       final updatedStatus = Map<String, String>.from(state.fileUploadStatus);
@@ -288,8 +305,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
       state = state.copyWith(completedFiles: i + 1);
     }
 
-    // Stop foreground service
-    await BackgroundService.stopUploadForegroundService();
+    // Cancel upload progress notification
+    await BackgroundService.cancelUploadProgress();
+    await BackgroundService.showUploadComplete(count: uploadedPhotos.length);
 
     // Fire-and-forget background auto-tagging for ALL uploaded photos
     if (uploadedPhotos.isNotEmpty) {
