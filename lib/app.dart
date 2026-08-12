@@ -3,16 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'navigation/app_router.dart';
 
-/// KidConnect App — Parents & Preschool Connect
-class KidConnectApp extends ConsumerWidget {
-  const KidConnectApp({super.key});
+/// SnapPix-AI — AI Photo Upload with Face Detection and Auto-Tagging
+class SnapPixAiApp extends ConsumerWidget {
+  const SnapPixAiApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'KidConnect',
+      title: 'SnapPix-AI',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: router,
