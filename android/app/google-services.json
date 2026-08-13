@@ -1,26 +1,36 @@
 {
   "project_info": {
-    "project_number": "191005492537",
-    "project_id": "kidconnect-be735",
-    "storage_bucket": "kidconnect-be735.firebasestorage.app"
+    "project_number": "387553660752",
+    "project_id": "snappixai",
+    "storage_bucket": "snappixai.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:191005492537:android:207f2d810b7009e18594e8",
+        "mobilesdk_app_id": "1:387553660752:android:226ed71114ab0fd654a655",
         "android_client_info": {
-          "package_name": "com.example.kidconnect"
+          "package_name": "com.alnico.snappix_ai"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "387553660752-i1dht9ntt0gl14cfuaojbfvfjh1c03hu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyCR87BUAKrejb_cjFAMHvO_ta8o7PY2TCw"
+          "current_key": "AIzaSyC5xn6suVXFJltk_se62adVfLhpMC8E7bo"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387553660752-i1dht9ntt0gl14cfuaojbfvfjh1c03hu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

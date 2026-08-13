@@ -286,7 +286,7 @@ def detect_and_recognize():
 
     import urllib.request
     try:
-        req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
+        req = urllib.request.Request(image_url, headers={'User-Agent': 'SnapPix-AI/1.0'})
         img_bytes = urllib.request.urlopen(req, timeout=30).read()
     except Exception as e:
         return jsonify({'error': f'Failed to download image: {str(e)}'}), 400
@@ -408,7 +408,7 @@ def incremental_learn():
     
     import urllib.request
     try:
-        req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
+        req = urllib.request.Request(image_url, headers={'User-Agent': 'SnapPix-AI/1.0'})
         img_bytes = urllib.request.urlopen(req, timeout=30).read()
     except Exception as e:
         return jsonify({'error': f'Failed to download image: {str(e)}'}), 400
@@ -557,7 +557,7 @@ def unlearn():
     
     import urllib.request
     try:
-        req = urllib.request.Request(image_url, headers={'User-Agent': 'KidConnect/1.0'})
+        req = urllib.request.Request(image_url, headers={'User-Agent': 'SnapPix-AI/1.0'})
         img_bytes = urllib.request.urlopen(req, timeout=30).read()
     except Exception as e:
         return jsonify({'error': f'Failed to download image: {str(e)}'}), 400

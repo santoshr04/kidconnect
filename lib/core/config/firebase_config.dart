@@ -1,13 +1,13 @@
 import 'package:firebase_core/firebase_core.dart';
 
-/// Firebase configuration for kidconnect-be735.
+/// Firebase configuration for snappixai.
 const FirebaseOptions firebaseOptions = FirebaseOptions(
-  apiKey: 'AIzaSyCR87BUAKrejb_cjFAMHvO_ta8o7PY2TCw',
-  authDomain: 'kidconnect-be735.firebaseapp.com',
-  projectId: 'kidconnect-be735',
-  storageBucket: 'kidconnect-be735.firebasestorage.app',
-  messagingSenderId: '191005492537',
-  appId: '1:191005492537:android:207f2d810b7009e18594e8',
+  apiKey: 'AIzaSyC5xn6suVXFJltk_se62adVfLhpMC8E7bo',
+  authDomain: 'snappixai.firebaseapp.com',
+  projectId: 'snappixai',
+  storageBucket: 'snappixai.firebasestorage.app',
+  messagingSenderId: '387553660752',
+  appId: '1:387553660752:android:226ed71114ab0fd654a655',
 );
 
 Future<void> initFirebase() async {

@@ -122,7 +122,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> loginAsRole(UserRole role) async {
-    await login('demo@kidconnect.com', 'password', role);
+    await login('demo@snappixai.com', 'password', role);
   }
 
   Future<bool> loginParentByPhone(String phone) async {
@@ -146,12 +146,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final parentDocId = foundDoc.id;
 
       // Use stable parent doc ID for email (phone-agnostic)
-      final email = '$parentDocId@kidconnect.internal';
+      final email = '$parentDocId@snappix-ai.internal';
 
       // OTP from stored document, or fallback to computed from phone
       final storedOtp = data['otp'] as String?;
       final otp = storedOtp ?? (100000 + (phone.hashCode % 900000)).toString();
-      final password = 'KC@$otp';
+      final password = 'SP@$otp';
 
       // Try to sign in first (existing account)
       UserModel? firebaseUser;
@@ -168,7 +168,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (firebaseUser == null) {
         // Still failing? Try with the old-style phone-based email as fallback
-        final oldEmail = '$phone@kidconnect.internal';
+        final oldEmail = '$phone@snappix-ai.internal';
         firebaseUser = await AuthRepository.signInWithEmail(oldEmail, password, UserRole.parent);
         if (firebaseUser == null) {
           // Create with phone-based email as last resort

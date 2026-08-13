@@ -169,7 +169,7 @@ class _SplashScreenState extends State<SplashScreen>
                       child: Column(
                         children: [
                           Text(
-                            'KidConnect',
+                            'SnapPix-AI',
                             style: GoogleFonts.nunito(
                               fontSize: 40,
                               fontWeight: FontWeight.w900,

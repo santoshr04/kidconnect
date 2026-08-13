@@ -1,6 +1,6 @@
 {
-  "name": "kidconnect-functions",
-  "description": "Cloud Functions for KidConnect - Face Detection on Upload",
+  "name": "snappix-ai-functions",
+  "description": "Cloud Functions for SnapPix-AI - Face Detection on Upload",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"

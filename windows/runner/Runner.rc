@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "kidconnect" "\0"
+            VALUE "CompanyName", "com.alnico" "\0"
+            VALUE "FileDescription", "snappix_ai" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "kidconnect" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "kidconnect.exe" "\0"
-            VALUE "ProductName", "kidconnect" "\0"
+            VALUE "InternalName", "snappix_ai" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.alnico. All rights reserved." "\0"
+            VALUE "OriginalFilename", "snappix_ai.exe" "\0"
+            VALUE "ProductName", "snappix_ai" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

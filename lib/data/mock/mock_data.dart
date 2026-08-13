@@ -4,7 +4,7 @@ import '../models/photo_model.dart';
 import '../models/message_model.dart';
 import '../models/class_model.dart';
 
-/// Comprehensive mock data for KidConnect app
+/// Comprehensive mock data for SnapPix-AI app
 class MockData {
   MockData._();
 
@@ -12,7 +12,7 @@ class MockData {
     UserModel(
       id: 'teacher_1',
       name: 'Sarah Johnson',
-      email: 'sarah.johnson@kidconnect.com',
+      email: 'sarah.johnson@snappixai.com',
       role: UserRole.teacher,
       phone: '+1 555-0101',
       createdAt: DateTime(2025, 1, 15),
@@ -20,7 +20,7 @@ class MockData {
     UserModel(
       id: 'teacher_2',
       name: 'Emily Chen',
-      email: 'emily.chen@kidconnect.com',
+      email: 'emily.chen@snappixai.com',
       role: UserRole.teacher,
       phone: '+1 555-0102',
       createdAt: DateTime(2025, 3, 20),
@@ -32,7 +32,7 @@ class MockData {
     UserModel(
       id: 'admin_1',
       name: 'Admin User',
-      email: 'admin@kidconnect.com',
+      email: 'admin@snappixai.com',
       role: UserRole.admin,
       phone: '',
       createdAt: DateTime(2025, 1, 1),
@@ -52,7 +52,7 @@ class MockData {
     UserModel(
       id: 'parent_ruthvi',
       name: 'Ruthvi Aisiri S',
-      email: 'parent@kidconnect.com',
+      email: 'parent@snappixai.com',
       role: UserRole.parent,
       phone: '9611777914',
       createdAt: DateTime(2025, 8, 15),

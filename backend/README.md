@@ -1,4 +1,4 @@
-# KidConnect Face Recognition Backend (InsightFace)
+# SnapPix-AI Face Recognition Backend (InsightFace)
 
 99.8% accurate face recognition using InsightFace buffal_l model.
 

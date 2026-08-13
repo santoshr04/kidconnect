@@ -1,6 +1,6 @@
 @echo off
 echo ===================================
-echo    KidConnect - Deploy AI Function  
+echo    SnapPix-AI - Deploy AI Function  
 echo ===================================
 echo.
 echo Adding Node.js to PATH...

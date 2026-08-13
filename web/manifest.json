@@ -1,11 +1,11 @@
 {
-    "name": "kidconnect",
-    "short_name": "kidconnect",
+    "name": "SnapPix-AI",
+    "short_name": "SnapPix-AI",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "SnapPix-AI — AI Photo Upload with Face Detection and Auto-Tagging",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

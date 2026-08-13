@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
-/// KidConnect Theme Configuration
+/// SnapPix-AI Theme Configuration
 /// Material 3 design with a playful, warm aesthetic
 class AppTheme {
   AppTheme._();

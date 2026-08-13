@@ -119,7 +119,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                             ),
                           ),
                           Text(
-                            'KidConnect',
+                            'SnapPix-AI',
                             style: GoogleFonts.nunito(
                               fontSize: 36,
                               fontWeight: FontWeight.w900,
@@ -244,7 +244,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'KidConnect v1.0',
+                                  'SnapPix-AI v1.0',
                                   style: GoogleFonts.nunito(
                                     fontSize: 12,
                                     color: AppColors.textTertiary,

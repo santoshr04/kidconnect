@@ -1,4 +1,4 @@
-/// User roles in the KidConnect app
+/// User roles in the SnapPix-AI app
 enum UserRole { parent, teacher, admin }
 
 /// Status for parent accounts created by teachers

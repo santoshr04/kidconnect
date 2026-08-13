@@ -46,7 +46,7 @@ class BackgroundService {
       body: body,
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
-          'kidconnect_photos', 'Photo Updates',
+          'snappix_photos', 'Photo Updates',
           channelDescription: 'Notifications when new photos are uploaded',
           importance: Importance.high, priority: Priority.high,
           showWhen: true, enableVibration: true, playSound: true,
@@ -71,7 +71,7 @@ class BackgroundService {
       body: '$completed of $total photos',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'kidconnect_upload', 'Upload Progress',
+          'snappix_upload', 'Upload Progress',
           channelDescription: 'Upload progress',
           importance: Importance.low, priority: Priority.low,
           ongoing: true, autoCancel: false, showWhen: true,
@@ -104,7 +104,7 @@ class BackgroundService {
       body: '$completed of $total photos',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'kidconnect_tag', 'AI Tagging',
+          'snappix_tag', 'AI Tagging',
           channelDescription: 'AI tagging progress',
           importance: Importance.low, priority: Priority.low,
           ongoing: true, autoCancel: false, showWhen: true,
@@ -133,7 +133,7 @@ class BackgroundService {
       body: '$count photo${count != 1 ? 's' : ''} uploaded',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
-          'kidconnect_photos', 'Photo Updates',
+          'snappix_photos', 'Photo Updates',
           channelDescription: 'Upload completion',
           importance: Importance.high, priority: Priority.high,
           showWhen: true, enableVibration: true, playSound: true,

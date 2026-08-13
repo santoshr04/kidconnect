@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kidconnect/data/mock/mock_data.dart';
-import 'package:kidconnect/data/models/user_model.dart';
+import 'package:snappix_ai/data/mock/mock_data.dart';
+import 'package:snappix_ai/data/models/user_model.dart';
 
 void main() {
   testWidgets('UserModel creates correct initials', (WidgetTester tester) async {

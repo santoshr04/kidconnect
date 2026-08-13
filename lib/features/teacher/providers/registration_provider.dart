@@ -254,7 +254,7 @@ class RegistrationProvider extends StateNotifier<RegistrationState> {
             'name': state.parentName,
             'phone': phoneDigits,
             'alternatePhone': state.alternateMobile.replaceAll(RegExp(r'\D'), ''),
-            'email': '$phoneDigits@kidconnect.internal',
+            'email': '$phoneDigits@snappix-ai.internal',
             'otp': otp,
             'status': 'pending_completion',
             'createdBy': 'teacher',

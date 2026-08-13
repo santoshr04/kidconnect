@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.kidconnect"
+    namespace = "com.alnico.snappix_ai"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
 
@@ -16,7 +16,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.kidconnect"
+        applicationId = "com.alnico.snappix_ai"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

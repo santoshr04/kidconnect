@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// KidConnect Color Palette
+/// SnapPix-AI Color Palette
 /// A warm, playful yet professional color system designed
 /// for a preschool app that appeals to both children and parents.
 class AppColors {

@@ -1,16 +1,12 @@
 rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.get(
+//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to read, write, and delete photos
-    match /photos/{userId}/{photoId} {
-      allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null;
-    }
-    // Allow authenticated users to read any file
     match /{allPaths=**} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

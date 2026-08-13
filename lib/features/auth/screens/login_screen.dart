@@ -34,10 +34,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     super.initState();
     // Pre-fill credentials based on role
     if (widget.role == 'admin') {
-      _emailController = TextEditingController(text: 'admin@kidconnect.com');
+      _emailController = TextEditingController(text: 'admin@snappixai.com');
       _passwordController = TextEditingController(text: 'admin123');
     } else if (widget.role == 'teacher') {
-      _emailController = TextEditingController(text: 'teacher@kidconnect.com');
+      _emailController = TextEditingController(text: 'teacher@snappixai.com');
       _passwordController = TextEditingController(text: 'password123');
     } else {
       _emailController = TextEditingController(text: '');
