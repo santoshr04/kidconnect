@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/avatar_widget.dart';
@@ -7,7 +10,6 @@ import '../../../data/mock/mock_data.dart';
 import '../../../data/models/message_model.dart';
 import '../../auth/providers/auth_provider.dart';
 
-/// Chat screen with message bubbles
 class ChatScreen extends ConsumerStatefulWidget {
   final String otherUserId;
 
@@ -40,18 +42,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.isEmpty) return;
 
     final userId = ref.read(authProvider).currentUser?.id ?? 'parent_1';
-    final userName =
-        ref.read(authProvider).currentUser?.name ?? 'User';
+    final userName = ref.read(authProvider).currentUser?.name ?? 'User';
 
     setState(() {
       _messages.add(MessageModel(
         id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+        threadId: '${userId}_${widget.otherUserId}',
         senderId: userId,
-        receiverId: widget.otherUserId,
-        senderName: userName,
-        content: text,
-        timestamp: DateTime.now(),
-        isRead: false,
+        text: text,
+        timestamp: Timestamp.now(),
       ));
     });
 
@@ -75,8 +74,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final otherUser = MockData.getUserById(widget.otherUserId);
 
     // Combine mock messages with local messages
-    final mockMessages =
-        MockData.getMessagesBetween(userId, widget.otherUserId);
+    final mockMessages = MockData.getMessagesBetween(userId, widget.otherUserId);
     final allMessages = [...mockMessages, ..._messages];
 
     return Scaffold(
@@ -150,15 +148,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: allMessages.length,
                     itemBuilder: (context, index) {
                       final message = allMessages[index];
                       final isMe = message.senderId == userId;
-                      final showAvatar = index == 0 ||
-                          allMessages[index - 1].senderId !=
-                              message.senderId;
+                      final showAvatar = index == 0 || allMessages[index - 1].senderId != message.senderId;
 
                       return _MessageBubble(
                         message: message,
@@ -191,8 +186,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               children: [
                 IconButton(
                   onPressed: () {},
-                  icon: const Icon(Icons.attach_file_rounded,
-                      color: AppColors.textTertiary),
+                  icon: const Icon(Icons.attach_file_rounded, color: AppColors.textTertiary),
                 ),
                 Expanded(
                   child: TextField(
@@ -201,8 +195,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       hintText: 'Type a message...',
                       filled: true,
                       fillColor: AppColors.surfaceVariant,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
@@ -219,8 +212,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   child: IconButton(
                     onPressed: _sendMessage,
-                    icon: const Icon(Icons.send_rounded,
-                        color: AppColors.white, size: 20),
+                    icon: const Icon(Icons.send_rounded, color: AppColors.white, size: 20),
                   ),
                 ),
               ],
@@ -246,20 +238,16 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-        top: showAvatar ? 8 : 2,
-        bottom: 2,
-      ),
+      padding: EdgeInsets.only(top: showAvatar ? 8 : 2, bottom: 2),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe && showAvatar)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: AvatarWidget(
-                name: message.senderName,
+                name: message.senderId,
                 size: 28,
               ),
             )
@@ -267,12 +255,9 @@ class _MessageBubble extends StatelessWidget {
             const SizedBox(width: 36),
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe
-                    ? AppColors.primary
-                    : AppColors.white,
+                color: isMe ? AppColors.primary : AppColors.white,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -291,23 +276,13 @@ class _MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    message.content,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      color: isMe
-                          ? AppColors.white
-                          : AppColors.textPrimary,
-                    ),
+                    message.text,
+                    style: GoogleFonts.nunito(fontSize: 14, color: isMe ? AppColors.white : AppColors.textPrimary),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _formatTime(message.timestamp),
-                    style: GoogleFonts.nunito(
-                      fontSize: 10,
-                      color: isMe
-                          ? AppColors.white.withValues(alpha: 0.7)
-                          : AppColors.textTertiary,
-                    ),
+                    _formatTime((message.timestamp as Timestamp).toDate()),
+                    style: GoogleFonts.nunito(fontSize: 10, color: isMe ? AppColors.white.withValues(alpha: 0.7) : AppColors.textTertiary),
                   ),
                 ],
               ),

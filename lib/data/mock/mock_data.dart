@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/child_model.dart';
 import '../models/photo_model.dart';
@@ -445,12 +446,10 @@ class MockData {
   static final List<MessageModel> messages = [
     MessageModel(
       id: 'msg_3',
+      threadId: 'parent_1_teacher_1',
       senderId: 'teacher_1',
-      receiverId: 'parent_1',
-      senderName: 'Sarah Johnson',
-      content: 'I\'ve uploaded some photos from today\'s activities to the gallery. You can check them out anytime!',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
-      isRead: false,
+      text: 'I\'ve uploaded some photos from today\'s activities to the gallery. You can check them out anytime!',
+      timestamp: Timestamp.fromDate(DateTime.now().subtract(const Duration(minutes: 30))),
     ),
   ];
 
@@ -504,11 +503,10 @@ class MockData {
   }
 
   static List<MessageModel> getMessagesBetween(String userId1, String userId2) {
-    return messages
-        .where((m) =>
-            (m.senderId == userId1 && m.receiverId == userId2) ||
-            (m.senderId == userId2 && m.receiverId == userId1))
-        .toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final ids = [userId1, userId2]..sort();
+    final threadId = '${ids[0]}_${ids[1]}';
+    final list = messages.where((m) => m.threadId == threadId).toList();
+    list.sort((a, b) => (a.timestamp as Timestamp).toDate().compareTo((b.timestamp as Timestamp).toDate()));
+    return list;
   }
 }

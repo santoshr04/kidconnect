@@ -14,6 +14,7 @@ import '../../../data/repositories/photo_repository.dart';
 import '../../../core/services/insight_face_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/teacher_photo_provider.dart';
+import '../../../core/upload_manager.dart';
 
 class TeacherGalleryScreen extends ConsumerStatefulWidget {
   const TeacherGalleryScreen({super.key});
@@ -30,6 +31,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
 
   Future<void> _autoTagAll() async {
     setState(() { _isAutoTagging = true; _autoTagProgress = 0; });
+    try { await UploadManager.startTaggingNotification(title: 'Auto-tagging photos', text: 'Scanning photos...'); } catch (_) {}
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('photos')
@@ -49,6 +51,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
         final url = doc.data()['url'] as String?;
         if (url == null || !url.startsWith('https://')) continue;
         setState(() => _autoTagProgress = i + 1);
+        try { await UploadManager.updateTaggingNotification(progress: _autoTagProgress); } catch (_) {}
         try {
           final result = await InsightFaceService.detectAndRecognize(url);
           if (result.error != null || result.faces.isEmpty) continue;
@@ -76,6 +79,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
     }
+    try { await UploadManager.stopTaggingNotification(); } catch (_) {}
     if (mounted) setState(() => _isAutoTagging = false);
   }
 
@@ -109,6 +113,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     if (confirmed != true) return;
 
     setState(() { _isAutoTagging = true; _autoTagProgress = 0; });
+    try { await UploadManager.startTaggingNotification(title: 'Re-tagging photos', text: 'Re-evaluating faces...'); } catch (_) {}
 
     try {
       // Fetch valid registered child IDs
@@ -133,6 +138,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
         final url = data['url'] as String?;
         if (url == null || !url.startsWith('https://')) continue;
         setState(() => _autoTagProgress = i + 1);
+        try { await UploadManager.updateTaggingNotification(progress: _autoTagProgress); } catch (_) {}
 
         final existingDetections = (data['aiDetections'] as List?)
             ?.map((d) => d as Map<String, dynamic>)
@@ -361,6 +367,7 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
     }
+    try { await UploadManager.stopTaggingNotification(); } catch (_) {}
     if (mounted) setState(() => _isAutoTagging = false);
   }
 

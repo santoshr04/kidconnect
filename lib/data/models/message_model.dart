@@ -1,28 +1,32 @@
-/// Chat message model
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class MessageModel {
   final String id;
+  final String threadId; // e.g. teacherId_parentId
   final String senderId;
-  final String receiverId;
-  final String senderName;
-  final String content;
-  final DateTime timestamp;
-  final bool isRead;
-  final MessageType type;
+  final String text;
+  final Timestamp timestamp;
 
-  const MessageModel({
-    required this.id,
-    required this.senderId,
-    required this.receiverId,
-    required this.senderName,
-    required this.content,
-    required this.timestamp,
-    this.isRead = false,
-    this.type = MessageType.text,
-  });
+  MessageModel({required this.id, required this.threadId, required this.senderId, required this.text, required this.timestamp});
+
+  Map<String, dynamic> toMap() => {
+        'threadId': threadId,
+        'senderId': senderId,
+        'text': text,
+        'timestamp': timestamp,
+      };
+
+  factory MessageModel.fromDoc(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return MessageModel(
+      id: doc.id,
+      threadId: data['threadId'] as String? ?? '',
+      senderId: data['senderId'] as String? ?? '',
+      text: data['text'] as String? ?? '',
+      timestamp: data['timestamp'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
 }
-
-enum MessageType { text, image, file }
-
 /// Chat conversation preview
 class ConversationModel {
   final String id;
