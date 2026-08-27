@@ -15,6 +15,7 @@ import '../../../core/services/insight_face_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/teacher_photo_provider.dart';
 import '../../../core/upload_manager.dart';
+import '../widgets/face_tagging_dialog.dart';
 
 class TeacherGalleryScreen extends ConsumerStatefulWidget {
   const TeacherGalleryScreen({super.key});
@@ -484,6 +485,9 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
       case 'pending':
         filteredPhotos = allPhotos.where((p) => p.childIds.isEmpty || p.tags.contains('__needs_review__')).toList();
         break;
+      case 'needs_tagging':
+        filteredPhotos = []; // We use a separate StreamBuilder for this
+        break;
       default:
         filteredPhotos = allPhotos;
     }
@@ -547,53 +551,123 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
             _FilterChip(label: 'Tagged', count: allPhotos.where((p) => p.childIds.isNotEmpty).length, isSelected: _filter == 'tagged', color: AppColors.success, onTap: () => setState(() => _filter = 'tagged')),
             const SizedBox(width: 8),
             _FilterChip(label: 'Needs Review', count: allPhotos.where((p) => p.childIds.isEmpty).length, isSelected: _filter == 'pending', color: AppColors.warning, onTap: () => setState(() => _filter = 'pending')),
+            const SizedBox(width: 8),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: PhotoRepository.getPendingFaces(),
+              builder: (context, snapshot) {
+                final pendingCount = snapshot.data?.length ?? 0;
+                return _FilterChip(label: 'Needs Tagging', count: pendingCount, isSelected: _filter == 'needs_tagging', color: AppColors.error, onTap: () => setState(() => _filter = 'needs_tagging'));
+              },
+            ),
           ]),
         ),
         const Divider(height: 1),
         Expanded(
-          child: filteredPhotos.isEmpty
-              ? _buildEmpty()
-              : Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: MasonryGridView.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    itemCount: filteredPhotos.length,
-                    itemBuilder: (context, index) {
-                      final photo = filteredPhotos[index];
-                      return _TeacherPhotoCard(
-                        photo: photo,
-                        index: index,
-                        showWarning: photo.childIds.isEmpty,
-                        isSelected: _selectedIds.contains(photo.id),
-                        isPending: isPhotoPending(photo),
-                        selectionMode: _selectionMode,
-                        uploadStatus: uploadState.fileUploadStatus[photo.id],
-                        onTap: () {
-                          if (_selectionMode) {
-                            _toggleSelection(photo.id);
-                          } else {
-                            if (photo.childIds.isNotEmpty) {
-                              // Already tagged — use simple photo viewer
-                              final allPhotosList = filteredPhotos;
-                              final photoIdx = allPhotosList.indexWhere((p) => p.id == photo.id);
-                              context.push('/photo-viewer', extra: {
-                                'photos': allPhotosList,
-                                'index': photoIdx >= 0 ? photoIdx : 0,
-                              });
-                            } else {
-                              context.push('/teacher/photo/${photo.id}', extra: photo);
-                            }
-                          }
+          child: _filter == 'needs_tagging'
+              ? StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: PhotoRepository.getPendingFaces(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final pendingFaces = snapshot.data ?? [];
+                    if (pendingFaces.isEmpty) {
+                      return _buildEmpty();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: MasonryGridView.count(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        itemCount: pendingFaces.length,
+                        itemBuilder: (context, index) {
+                          final face = pendingFaces[index];
+                          return GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => FaceTaggingDialog(pendingFace: face),
+                              );
+                            },
+                            child: Container(
+                              height: 120,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [BoxShadow(color: AppColors.shadow.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    CachedNetworkImage(
+                                      imageUrl: face['cropUrl'],
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) => Container(color: AppColors.surfaceVariant),
+                                      errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant, child: const Icon(Icons.error)),
+                                    ),
+                                    Positioned(
+                                      bottom: 0, left: 0, right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        color: Colors.black54,
+                                        child: Text('Tap to tag', textAlign: TextAlign.center, style: GoogleFonts.nunito(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                                      ),
+                                    )
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
                         },
-                        onLongPress: () {
-                          if (!_selectionMode) _showPhotoActions(context, photo);
+                      ),
+                    );
+                  },
+                )
+              : filteredPhotos.isEmpty
+                  ? _buildEmpty()
+                  : Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: MasonryGridView.count(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        itemCount: filteredPhotos.length,
+                        itemBuilder: (context, index) {
+                          final photo = filteredPhotos[index];
+                          return _TeacherPhotoCard(
+                            photo: photo,
+                            index: index,
+                            showWarning: photo.childIds.isEmpty,
+                            isSelected: _selectedIds.contains(photo.id),
+                            isPending: isPhotoPending(photo),
+                            selectionMode: _selectionMode,
+                            uploadStatus: uploadState.fileUploadStatus[photo.id],
+                            onTap: () {
+                              if (_selectionMode) {
+                                _toggleSelection(photo.id);
+                              } else {
+                                if (photo.childIds.isNotEmpty) {
+                                  // Already tagged — use simple photo viewer
+                                  final allPhotosList = filteredPhotos;
+                                  final photoIdx = allPhotosList.indexWhere((p) => p.id == photo.id);
+                                  context.push('/photo-viewer', extra: {
+                                    'photos': allPhotosList,
+                                    'index': photoIdx >= 0 ? photoIdx : 0,
+                                  });
+                                } else {
+                                  context.push('/teacher/photo/${photo.id}', extra: photo);
+                                }
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_selectionMode) _showPhotoActions(context, photo);
+                            },
+                          );
                         },
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
         ),
       ]),
     );

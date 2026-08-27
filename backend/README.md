@@ -51,3 +51,36 @@ Open http://localhost:5000/health in browser → `{"status":"ok","enrolled_count
 
 ## Files Created
 - `enrolled_faces.json` - Stored face embeddings (persists across restarts)
+
+## Batch Tagging (`batch_process.py`)
+
+Runs the same InsightFace model over every uploaded photo in Firestore, tags the faces it already knows,
+and crops the unknown faces for the teacher to tag manually in the app.
+
+```cmd
+cd backend
+python batch_process.py
+```
+
+**Prerequisites**
+
+- A Firebase service account. Put `serviceAccountKey.json` in the `backend/` folder, or run with
+  Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`).
+- `enrolled_faces.json` must exist in the same folder (the server writes it via `/enroll` and
+  `/incremental_learn`).
+
+**What it does**
+
+1. Loads the enrolled embeddings from `enrolled_faces.json` (read-only).
+2. Streams every `photos` document where `tagging_completed` is not `true`.
+3. Detects faces and compares each one against the enrolled embeddings.
+   - Score > `0.35` → the face is auto-tagged with the matched child.
+   - A face already marked `neglected` or `tagged` in the photo's `aiDetections` is left untouched.
+   - Everything else → the face is cropped and stored in `pending_faces`.
+4. Writes the photo's per-face state and completion flag:
+   - `aiDetections` — `[{ bbox, childId, confidence, status: tagged|pending|neglected }]`
+   - `childIds`, `totalFaces`, `taggedFaces`, `neglectedFaces`, `pendingFaces`
+   - `tagging_completed: true` only when there are no pending faces left.
+
+Cropped faces are uploaded to Firebase Storage under `cropped_faces/` and made public so the Flutter
+app can show them in the teacher's **Needs Tagging** gallery tab.
