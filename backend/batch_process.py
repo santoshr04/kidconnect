@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import numpy as np
 import cv2
 import urllib.request
@@ -30,6 +31,9 @@ _face_app.prepare(ctx_id=-1)
 # Load enrolled faces
 _enrolled = {}
 _DATA_FILE = 'enrolled_faces.json'
+
+# Faces estimated to be older than this (years) are treated as adults and auto-neglected.
+_ADULT_AGE_THRESHOLD = 18
 
 def load_enrolled():
     global _enrolled
@@ -126,13 +130,85 @@ def _ensure_pending_face(photo_id, bbox, crop_url, best_score):
     return True
 
 
+def _resolve_existing_pending(photo_id, bbox, status, child_id=None):
+    """
+    If a face was previously cropped into pending_faces but is now resolved
+    (tagged or neglected), update that pending doc so it disappears from the
+    app's "Needs Tagging" tab.
+    """
+    doc_id = f"{photo_id}_{int(bbox[0])}_{int(bbox[1])}_{int(bbox[2])}_{int(bbox[3])}"
+    ref = db.collection('pending_faces').document(doc_id)
+    existing = ref.get()
+    if not existing.exists:
+        return
+    update = {'status': status}
+    if status == 'tagged' and child_id:
+        update['taggedChildId'] = child_id
+    ref.update(update)
+
+
+_BATCH_STATE_FILE = 'batch_state.json'
+
+
+def _enrolled_signature():
+    """Fingerprint of enrolled_faces.json so we can detect new/updated enrollments."""
+    if os.path.exists(_DATA_FILE):
+        with open(_DATA_FILE, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    return 'empty'
+
+
+def _load_batch_state():
+    if os.path.exists(_BATCH_STATE_FILE):
+        try:
+            with open(_BATCH_STATE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def _save_batch_state(photos_count, incomplete_photos, enrolled_signature):
+    with open(_BATCH_STATE_FILE, 'w') as f:
+        json.dump({
+            'photos_count': photos_count,
+            'incomplete_photos': incomplete_photos,
+            'enrolled_signature': enrolled_signature,
+        }, f)
+
+
+def _compute_snapshot():
+    """Return (photos, photos_count, incomplete_photos)."""
+    photos = list(db.collection('photos').stream())
+    photos_count = len(photos)
+    incomplete_photos = sum(
+        1 for p in photos if p.to_dict().get('tagging_completed') is not True
+    )
+    return photos, photos_count, incomplete_photos
+
+
 def process_photos():
     load_enrolled()
     print("Fetching photos from Firestore...")
 
-    # Process any photo that is not already fully resolved (all faces tagged or neglected).
-    photos_ref = db.collection('photos')
-    photos = photos_ref.stream()
+    photos, photos_count, incomplete_before = _compute_snapshot()
+    enrolled_sig = _enrolled_signature()
+
+    # Nothing untagged left — no work to do.
+    if incomplete_before == 0:
+        print("No untagged photos — nothing to do.")
+        return
+
+    # Skip if nothing changed since the last run: same photo count, same number of
+    # incomplete photos, and no new/updated face enrollments. This makes the batch
+    # "try again" only when there is actually new work (new photos, new taggings,
+    # or new names in enrolled_faces.json).
+    prev = _load_batch_state()
+    if prev and prev.get('photos_count') == photos_count \
+            and prev.get('incomplete_photos') == incomplete_before \
+            and prev.get('enrolled_signature') == enrolled_sig:
+        print("No changes detected (same photos, no new taggings/enrollments) — skipping batch.")
+        return
 
     bucket = None
     processed_count = 0
@@ -208,18 +284,28 @@ def process_photos():
             for i, face in enumerate(faces):
                 bbox = [float(v) for v in face.bbox]
                 embedding = face.embedding
+                age = getattr(face, 'age', None)
+                is_adult = (age is not None) and (age > _ADULT_AGE_THRESHOLD)
 
                 idx = _find_detection_index(existing_detections, bbox)
                 existing = existing_detections[idx] if idx >= 0 else None
 
+                reason = None
                 if existing and existing.get('status') == 'neglected':
                     status = 'neglected'
                     child_id = ''
                     confidence = existing.get('confidence', 0.0)
+                    reason = existing.get('reason')
                 elif existing and existing.get('status') == 'tagged' and existing.get('childId'):
                     status = 'tagged'
                     child_id = existing.get('childId')
                     confidence = existing.get('confidence', 0.0)
+                elif is_adult:
+                    # Adult face — silently neglect so it never shows in "Needs Tagging".
+                    status = 'neglected'
+                    child_id = ''
+                    confidence = 0.0
+                    reason = 'adult'
                 else:
                     best_child_id = None
                     best_score = 0.0
@@ -236,12 +322,17 @@ def process_photos():
                         confidence = 0.0
                         pending_faces_to_create.append((i, bbox, best_score))
 
-                new_detections.append({
+                det = {
                     'bbox': bbox,
                     'childId': child_id,
                     'confidence': confidence,
                     'status': status,
-                })
+                }
+                if age is not None:
+                    det['age'] = float(age)
+                if reason:
+                    det['reason'] = reason
+                new_detections.append(det)
 
                 if status == 'tagged' and child_id:
                     existing_child_ids.add(child_id)
@@ -259,6 +350,12 @@ def process_photos():
                 'pendingFaces': pending_faces_count,
                 'tagging_completed': pending_faces_count == 0,
             })
+
+            # Reconcile any existing pending_faces docs for faces now resolved
+            # (e.g. adults auto-neglected, or faces tagged on this run).
+            for det in new_detections:
+                if det['status'] in ('tagged', 'neglected'):
+                    _resolve_existing_pending(photo_id, det['bbox'], det['status'], det.get('childId'))
 
             if pending_faces_count == 0:
                 resolved_count += 1
@@ -297,6 +394,10 @@ def process_photos():
             
         except Exception as e:
             print(f"  Error processing photo {photo_id}: {e}")
+
+    # Persist the post-run state so the next run can skip when nothing changed.
+    _, _, incomplete_after = _compute_snapshot()
+    _save_batch_state(photos_count, incomplete_after, enrolled_sig)
 
     print("Batch processing complete.")
     print(f"  Processed: {processed_count}, Skipped (already complete): {skipped_completed}, "

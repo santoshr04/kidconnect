@@ -81,6 +81,12 @@ python batch_process.py
    - `aiDetections` — `[{ bbox, childId, confidence, status: tagged|pending|neglected }]`
    - `childIds`, `totalFaces`, `taggedFaces`, `neglectedFaces`, `pendingFaces`
    - `tagging_completed: true` only when there are no pending faces left.
+5. **Try-again**: every run re-matches the still-untagged faces against the latest `enrolled_faces.json`,
+   so once a teacher tags a new face (which the app learns via `/incremental_learn`), the next run
+   auto-tags the same kid in the other photos.
+6. **Skip if nothing changed**: it compares a lightweight state snapshot (`batch_state.json`) —
+   photo count, number of incomplete photos, and a hash of `enrolled_faces.json`. If all are unchanged
+   since the last run, it prints `No changes detected` and exits without doing the heavy face-detection work.
 
 Cropped faces are uploaded to Firebase Storage under `cropped_faces/` and made public so the Flutter
 app can show them in the teacher's **Needs Tagging** gallery tab.

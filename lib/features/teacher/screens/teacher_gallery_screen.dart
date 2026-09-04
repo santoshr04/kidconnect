@@ -27,6 +27,11 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
   String _filter = 'all';
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
+
+  // Pending-face (Needs Tagging) multi-select state
+  bool _pendingSelectMode = false;
+  bool _isIgnoringPending = false;
+  final Map<String, Map<String, dynamic>> _selectedPendingFaces = {};
   bool _isAutoTagging = false;
   int _autoTagProgress = 0;
 
@@ -389,6 +394,63 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
 
   void _exitSelectionMode() => setState(() { _selectionMode = false; _selectedIds.clear(); });
 
+  void _togglePendingSelection(Map<String, dynamic> face) {
+    final faceId = face['id'] as String? ?? '';
+    setState(() {
+      if (_selectedPendingFaces.containsKey(faceId)) {
+        _selectedPendingFaces.remove(faceId);
+        if (_selectedPendingFaces.isEmpty) _pendingSelectMode = false;
+      } else {
+        _selectedPendingFaces[faceId] = face;
+      }
+    });
+  }
+
+  void _enterPendingSelectMode(Map<String, dynamic> face) {
+    final faceId = face['id'] as String? ?? '';
+    setState(() {
+      _pendingSelectMode = true;
+      _selectedPendingFaces[faceId] = face;
+    });
+  }
+
+  void _exitPendingSelectMode() => setState(() {
+        _pendingSelectMode = false;
+        _selectedPendingFaces.clear();
+      });
+
+  Future<void> _ignoreSelectedPending() async {
+    final faces = List<Map<String, dynamic>>.from(_selectedPendingFaces.values);
+    if (faces.isEmpty) return;
+    setState(() => _isIgnoringPending = true);
+    try {
+      for (final face in faces) {
+        final bbox = (face['boundingBox'] as List?)
+            ?.map((e) => (e as num).toDouble())
+            .toList();
+        await PhotoRepository.neglectPendingFace(
+          pendingFaceId: face['id'] as String,
+          photoId: face['photoId'] as String,
+          bbox: bbox,
+        );
+      }
+      _exitPendingSelectMode();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ignored ${faces.length} face(s)'), backgroundColor: AppColors.success),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error ignoring: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isIgnoringPending = false);
+    }
+  }
+
   Widget _buildEmpty() => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       const Text('📸', style: TextStyle(fontSize: 48)),
@@ -495,11 +557,36 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: _selectionMode ? Text('${_selectedIds.length} selected', style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 18)) : Text('My Gallery', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        title: _pendingSelectMode
+            ? Text('${_selectedPendingFaces.length} selected', style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 18))
+            : _selectionMode
+                ? Text('${_selectedIds.length} selected', style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 18))
+                : Text('My Gallery', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
         backgroundColor: AppColors.background, elevation: 0,
-        leading: _selectionMode ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode) : null,
+        leading: (_selectionMode || _pendingSelectMode)
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  if (_pendingSelectMode) {
+                    _exitPendingSelectMode();
+                  } else {
+                    _exitSelectionMode();
+                  }
+                },
+              )
+            : null,
         actions: [
-          if (!_selectionMode) ...[
+          if (_pendingSelectMode) ...[
+            IconButton(
+              icon: _isIgnoringPending
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.error))
+                  : const Icon(Icons.do_not_disturb_alt, color: AppColors.error),
+              tooltip: 'Ignore selected',
+              onPressed: (_selectedPendingFaces.isEmpty || _isIgnoringPending) ? null : _ignoreSelectedPending,
+            ),
+          ] else if (_selectionMode) ...[
+            IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.error), onPressed: _selectedIds.isEmpty ? null : _deleteSelected),
+          ] else ...[
             IconButton(
               icon: _isAutoTagging
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
@@ -512,11 +599,14 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
               tooltip: 'Re-tag All Photos',
               onPressed: _reTagAll,
             ),
-          ],
-          if (_selectionMode)
-            IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.error), onPressed: _selectedIds.isEmpty ? null : _deleteSelected)
-          else
+            if (_filter == 'needs_tagging')
+              IconButton(
+                icon: const Icon(Icons.checklist_rtl, color: AppColors.primary),
+                tooltip: 'Select faces to ignore',
+                onPressed: () => setState(() => _pendingSelectMode = true),
+              ),
             Padding(padding: const EdgeInsets.only(right: 16), child: AvatarWidget(name: authState.currentUser?.name ?? 'Teacher', size: 36)),
+          ],
         ],
       ),
       body: Column(children: [
@@ -584,17 +674,27 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
                         itemCount: pendingFaces.length,
                         itemBuilder: (context, index) {
                           final face = pendingFaces[index];
+                          final faceId = face['id'] as String? ?? '';
+                          final isSelected = _selectedPendingFaces.containsKey(faceId);
                           return GestureDetector(
                             onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (ctx) => FaceTaggingDialog(pendingFace: face),
-                              );
+                              if (_pendingSelectMode) {
+                                _togglePendingSelection(face);
+                              } else {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => FaceTaggingDialog(pendingFace: face),
+                                );
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_pendingSelectMode) _enterPendingSelectMode(face);
                             },
                             child: Container(
                               height: 120,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
+                                border: isSelected ? Border.all(color: AppColors.primary, width: 3) : null,
                                 boxShadow: [BoxShadow(color: AppColors.shadow.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
                               ),
                               child: ClipRRect(
@@ -608,12 +708,29 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
                                       placeholder: (_, __) => Container(color: AppColors.surfaceVariant),
                                       errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant, child: const Icon(Icons.error)),
                                     ),
+                                    if (_pendingSelectMode)
+                                      Positioned(
+                                        top: 6, right: 6,
+                                        child: Container(
+                                          width: 24, height: 24,
+                                          decoration: BoxDecoration(
+                                            color: isSelected ? AppColors.primary : Colors.white.withValues(alpha: 0.8),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: isSelected ? AppColors.primary : AppColors.textTertiary, width: 2),
+                                          ),
+                                          child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 16) : null,
+                                        ),
+                                      ),
                                     Positioned(
                                       bottom: 0, left: 0, right: 0,
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 4),
                                         color: Colors.black54,
-                                        child: Text('Tap to tag', textAlign: TextAlign.center, style: GoogleFonts.nunito(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                                        child: Text(
+                                          _pendingSelectMode ? (isSelected ? 'Selected' : 'Tap to select') : 'Tap to tag',
+                                          textAlign: TextAlign.center,
+                                          style: GoogleFonts.nunito(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                                        ),
                                       ),
                                     )
                                   ],
