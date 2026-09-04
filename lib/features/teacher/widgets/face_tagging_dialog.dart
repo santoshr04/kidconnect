@@ -146,6 +146,75 @@ class _FaceTaggingDialogState extends State<FaceTaggingDialog> {
     }
   }
 
+  bool get _isNewName {
+    final q = _searchController.text.trim().toLowerCase();
+    if (q.isEmpty) return false;
+    return !_allChildren.any((doc) {
+      final name = (doc.data() as Map<String, dynamic>)['name']?.toString().toLowerCase() ?? '';
+      return name == q;
+    });
+  }
+
+  Future<void> _saveNewChild() async {
+    final name = _searchController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      // Create the kid in Firestore so they appear in future dropdowns too.
+      final docRef = FirebaseFirestore.instance.collection('children').doc();
+      await docRef.set({
+        'name': name,
+        'className': '',
+        'classId': '',
+        'section': null,
+        'parentId': '',
+        'hasFaceProfile': false,
+        'enrolledFaceCount': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      final childId = docRef.id;
+
+      final cropUrl = widget.pendingFace['cropUrl'];
+      await InsightFaceService.incrementalLearn(
+        childId: childId,
+        name: name,
+        imageUrl: cropUrl,
+      );
+
+      final bbox = (widget.pendingFace['boundingBox'] as List?)
+          ?.map((e) => (e as num).toDouble())
+          .toList();
+      await PhotoRepository.tagPendingFace(
+        pendingFaceId: widget.pendingFace['id'],
+        photoId: widget.pendingFace['photoId'],
+        childId: childId,
+        childInfo: {'name': name},
+        bbox: bbox,
+      );
+
+      if (mounted) {
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Tagged $name successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isSubmitting = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -249,6 +318,24 @@ class _FaceTaggingDialogState extends State<FaceTaggingDialog> {
             ),
 
             const SizedBox(height: 12),
+
+            if (_isNewName) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isSubmitting ? null : _saveNewChild,
+                  icon: const Icon(Icons.save, size: 18),
+                  label: Text('Save "${_searchController.text.trim()}"',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
 
             Row(
               children: [

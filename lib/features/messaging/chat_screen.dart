@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/models/message_model.dart';
 import '../../data/repositories/message_repository.dart';
-import '../../auth/providers/auth_provider.dart';
+import '../auth/providers/auth_provider.dart';
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
   final String threadId; // e.g. teacherId_parentId

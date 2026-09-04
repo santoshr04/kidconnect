@@ -543,7 +543,8 @@ class _TeacherGalleryScreenState extends ConsumerState<TeacherGalleryScreen> {
               Text('${uploadState.totalFiles - uploadState.completedFiles} uploading...', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.secondary)),
             ]),
           ),
-        Padding(
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(children: [
             _FilterChip(label: 'All', count: allPhotos.length, isSelected: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
